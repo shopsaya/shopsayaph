@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SITE_NAME = "ShopSaya";
@@ -6,6 +9,21 @@ const SITE_DOMAIN = "shopsayaph.com";
 const SITE_EMAIL = "shopsayaph@gmail.com";
 const MIN_WITHDRAWAL = 100;
 const AFFILIATE_ID = "kashim1080";
+
+// ─── FIREBASE ────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAz5t9kQ3-wyQ-kWO2EjTMUwspxe-gUq5k",
+  authDomain: "shopsayaph-63818.firebaseapp.com",
+  projectId: "shopsayaph-63818",
+  storageBucket: "shopsayaph-63818.firebasestorage.app",
+  messagingSenderId: "1071825458706",
+  appId: "1:1071825458706:web:35d2d059011144b872eacb",
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const fbProvider = new FacebookAuthProvider();
+// We only request the default "public_profile" scope (name + photo) — no email, no friends list.
 
 // ─── CLEAN MODERN PALETTE ─────────────────────────────────────────────────────
 const P  = "#EE4D2D";   // Shopee orange — primary brand color
@@ -51,30 +69,73 @@ const CATEGORIES = ["All","Electronics","Music","Stationery","Home & Living","He
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function useAuth() {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("shopsaya_user") || "null"); } catch { return null; }
-  });
-  const login = () => {
-    const u = { id: "fb_" + Math.random().toString(36).slice(2,10), name: "Maru B.", picture: "https://ui-avatars.com/api/?name=Maru+B&background=5C3EE8&color=fff&size=80", provider: "facebook", joinedAt: new Date().toISOString(), wallet: { pending:0, available:0, totalEarned:0, withdrawn:0 }, transactions: [], gcash: "" };
-    localStorage.setItem("shopsaya_user", JSON.stringify(u));
-    setUser(u);
-  };
-  const logout = () => { localStorage.removeItem("shopsaya_user"); setUser(null); };
-  const updateUser = upd => { const u = {...user,...upd}; localStorage.setItem("shopsaya_user", JSON.stringify(u)); setUser(u); };
-  const addTransaction = tx => {
-    const txs = [...(user.transactions||[]), {...tx, date: new Date().toISOString(), id: Date.now()}];
-    const pending   = txs.filter(t=>t.status==="pending").reduce((a,t)=>a+t.amount,0);
-    const available = txs.filter(t=>t.status==="available").reduce((a,t)=>a+t.amount,0);
-    const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+t.amount,0);
-    const withdrawn = txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+t.amount,0);
-    updateUser({ transactions: txs, wallet: { pending, available, totalEarned, withdrawn } });
-  };
-  return { user, login, logout, updateUser, addTransaction };
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) { setUser(null); setAuthLoading(false); return; }
+      try {
+        const ref = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          setUser({ id: fbUser.uid, ...snap.data() });
+        } else {
+          const fresh = {
+            name: fbUser.displayName || "ShopSaya Member",
+            picture: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName||"User")}&background=EE4D2D&color=fff&size=80`,
+            provider: "facebook",
+            joinedAt: new Date().toISOString(),
+            wallet: { pending:0, available:0, totalEarned:0, withdrawn:0 },
+            transactions: [],
+            gcash: "",
+          };
+          await setDoc(ref, fresh);
+          setUser({ id: fbUser.uid, ...fresh });
+        }
+      } catch (e) {
+        console.error("Failed to load user profile:", e);
+      }
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const login = () => signInWithPopup(auth, fbProvider);
+  const logout = () => signOut(auth);
+
+  const persist = (id, data) => setDoc(doc(db, "users", id), data, { merge: true }).catch(e => console.error("Save failed:", e));
+
+  const updateUser = useCallback((upd) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...upd };
+      persist(prev.id, upd);
+      return next;
+    });
+  }, []);
+
+  const addTransaction = useCallback((tx) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const txs = [...(prev.transactions||[]), {...tx, date: new Date().toISOString(), id: Date.now()}];
+      const pending   = txs.filter(t=>t.status==="pending").reduce((a,t)=>a+t.amount,0);
+      const available = txs.filter(t=>t.status==="available").reduce((a,t)=>a+t.amount,0);
+      const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+t.amount,0);
+      const withdrawn = txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+t.amount,0);
+      const wallet = { pending, available, totalEarned, withdrawn };
+      const next = { ...prev, transactions: txs, wallet };
+      persist(prev.id, { transactions: txs, wallet });
+      return next;
+    });
+  }, []);
+
+  return { user, login, logout, updateUser, addTransaction, authLoading };
 }
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { user, login, logout, updateUser, addTransaction } = useAuth();
+  const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
   const [page, setPage] = useState("home");
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
@@ -86,6 +147,26 @@ export default function App() {
   const PER_PAGE = 20;
 
   const showToast = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null), 3500); };
+
+  const handleLogin = async () => {
+    try {
+      await login();
+      setShowLogin(false);
+      showToast("👋 Maligayang pagdating sa ShopSaya!");
+    } catch (err) {
+      console.error("Login failed:", err);
+      const cancelled = err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request";
+      if (!cancelled) showToast("Hindi na-login. Subukan ulit.", "error");
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",color:GY,fontSize:14}}>
+        Loading ShopSaya...
+      </div>
+    );
+  }
 
   const filtered = PRODUCTS.filter(p =>
     (cat==="All" || p.category===cat) &&
@@ -164,7 +245,7 @@ export default function App() {
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
       {page==="terms" && <LegalPage type="terms" setPage={setPage} />}
 
-      {showLogin && <LoginModal onLogin={()=>{login();setShowLogin(false);showToast("👋 Maligayang pagdating sa ShopSaya!");}} onClose={()=>setShowLogin(false)} />}
+      {showLogin && <LoginModal onLogin={handleLogin} onClose={()=>setShowLogin(false)} />}
 
       {toast && (
         <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:toast.type==="error"?"#DC2626":DK,color:WH,padding:"12px 24px",borderRadius:24,fontWeight:600,fontSize:14,zIndex:9999,boxShadow:"0 4px 20px rgba(0,0,0,.25)",whiteSpace:"nowrap"}}>
