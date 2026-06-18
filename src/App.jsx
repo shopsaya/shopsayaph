@@ -665,7 +665,7 @@ function LegalPage({type, setPage}) {
     ["Security","GCash numbers are stored in masked format after your first withdrawal. We use encrypted storage for all personal data."],
     ["Contact NPC","If you believe your privacy rights have been violated, contact the National Privacy Commission at www.privacy.gov.ph or (02) 8234-2228."]
   ] : [
-    ["About ShopSaya",`ShopSaya is a cashback affiliate platform. We earn commission from Shopee when you buy through our links and share half with you as cashback. ShopSaya is NOT officially affiliated with Shopee Philippines.\n\nPowered by: MSB IT Solutions`],
+    ["About ShopSaya",`ShopSaya is a cashback affiliate platform. We earn commission from Shopee when you buy through our links and share half with you as cashback. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
     ["Eligibility","Must be 18+, a Philippine resident, with a valid Facebook account and GCash. One account per person. Multiple accounts will result in permanent ban and forfeiture of all cashback."],
     ["How Cashback Works","Earned when you click our link and complete a Shopee purchase. Cancelled or returned orders get no cashback. Cashback amounts shown are estimates and may change."],
     ["Withdrawals",`Minimum: ${fp(MIN_WITHDRAWAL)}. GCash only. Processed within 24–72 business hours. Cashback earnings are subject to Philippine taxes.`],
@@ -695,7 +695,7 @@ function LegalPage({type, setPage}) {
           </div>
         ))}
         <div style={{marginTop:20,padding:14,background:LG,borderRadius:10,fontSize:11,color:"#9CA3AF",textAlign:"center"}}>
-          ShopSaya PH · {SITE_DOMAIN} · {SITE_EMAIL} · © {new Date().getFullYear()}
+          ShopSaya PH · {SITE_DOMAIN} · {SITE_EMAIL} · © {new Date().getFullYear()} · Powered by: MSB IT Solutions
         </div>
       </div>
     </div>
