@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc } from "firebase/firestore";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SITE_NAME = "ShopSaya";
@@ -253,7 +253,7 @@ export default function App() {
         </div>
       </header>
 
-      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} />}
+      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} />}
       {page==="dashboard" && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} />}
       {page==="howto" && <HowItWorks setPage={setPage} />}
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
@@ -319,7 +319,7 @@ function LoginModal({onLogin, onClose}) {
 }
 
 // ─── HOME PAGE ────────────────────────────────────────────────────────────────
-function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage}) {
+function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage,showToast}) {
   const total = PRODUCTS.reduce((a,p)=>a+getCashback(p),0);
   return (
     <>
@@ -448,8 +448,60 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
             <button onClick={()=>setProdPage(p=>Math.min(totalPages,p+1))} disabled={prodPage===totalPages} style={{padding:"7px 14px",border:`1.5px solid ${prodPage===totalPages?"#E5E7EB":P}`,borderRadius:8,cursor:prodPage===totalPages?"default":"pointer",background:WH,color:prodPage===totalPages?"#D1D5DB":P,fontWeight:600,fontSize:13}}>Next ›</button>
           </div>
         )}
+
+        <RequestItem user={user} showToast={showToast} />
       </main>
     </>
+  );
+}
+
+// ─── REQUEST AN ITEM ────────────────────────────────────────────────────────
+function RequestItem({user, showToast}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) { showToast("I-type muna ang product na hinahanap mo 🙂", "error"); return; }
+    if (trimmed.length > 300) { showToast("Pasensya, masyadong haba. Paikliin pa konti.", "error"); return; }
+    setBusy(true);
+    try {
+      await addDoc(collection(db, "productRequests"), {
+        text: trimmed,
+        userId: user?.id || null,
+        userName: user?.name || "Guest",
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+      setText("");
+      showToast("Salamat! Hahanapan ka namin ng deal para dito. 🎉");
+    } catch (e) {
+      console.error("Failed to submit request:", e);
+      showToast("Hindi na-submit. Subukan ulit.", "error");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{marginTop:32,background:`linear-gradient(135deg,${PL} 0%,#FFF 100%)`,border:`1.5px dashed ${P}`,borderRadius:16,padding:"28px 24px",textAlign:"center"}}>
+      <div style={{fontSize:28,marginBottom:8}}>🔍</div>
+      <div style={{fontWeight:800,fontSize:17,color:DK,marginBottom:6}}>Hindi mo nakita ang hinahanap mo?</div>
+      <div style={{fontSize:13,color:GY,marginBottom:18,maxWidth:440,margin:"0 auto 18px"}}>
+        I-drop dito ang product name o Shopee link — at hahanapan ka namin ng magandang deal!
+      </div>
+      <div style={{display:"flex",gap:10,maxWidth:480,margin:"0 auto",flexWrap:"wrap"}}>
+        <input
+          value={text}
+          onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter") submit();}}
+          placeholder="hal. wireless earbuds, o i-paste ang Shopee link..."
+          style={{flex:1,minWidth:200,padding:"11px 16px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}
+        />
+        <button onClick={submit} disabled={busy} style={{background:P,color:WH,border:"none",borderRadius:10,padding:"11px 22px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:13,opacity:busy?.7:1}}>
+          {busy ? "..." : "Magpa-request"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -521,6 +573,25 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
   const [gcashNum, setGcashNum] = useState(user.gcash||"");
   const [gcashName, setGcashName] = useState("");
   const [amt, setAmt] = useState("");
+  const [fulfilled, setFulfilled] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const q = query(collection(db, "productRequests"), where("userId", "==", user.id), where("status", "==", "fulfilled"));
+        const snap = await getDocs(q);
+        const unseen = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(r => !r.seen);
+        setFulfilled(unseen);
+      } catch (e) {
+        console.error("Failed to load request notifications:", e);
+      }
+    })();
+  }, [user.id]);
+
+  const dismissRequest = async (id) => {
+    setFulfilled(prev => prev.filter(r => r.id !== id));
+    try { await updateDoc(doc(db, "productRequests", id), { seen: true }); } catch (e) { console.error("Failed to mark seen:", e); }
+  };
 
   const handleWithdraw = () => {
     const n = parseFloat(amt);
@@ -538,6 +609,20 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
 
   return (
     <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px"}}>
+      {/* FULFILLED REQUEST NOTIFICATIONS */}
+      {fulfilled.map(r=>(
+        <div key={r.id} style={{background:`linear-gradient(135deg,${PL} 0%,#FFF 100%)`,border:`1.5px solid ${P}`,borderRadius:14,padding:16,marginBottom:12,display:"flex",alignItems:"flex-start",gap:12}}>
+          <div style={{fontSize:22}}>🎉</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:14,color:DK,marginBottom:3}}>Good news, {user.name.split(" ")[0]}!</div>
+            <div style={{fontSize:13,color:GY,lineHeight:1.6}}>
+              We found a deal for "<strong>{r.text}</strong>"{r.dealNote ? ` — ${r.dealNote}` : ". Check the Deals page!"}
+            </div>
+          </div>
+          <button onClick={()=>dismissRequest(r.id)} style={{background:"none",border:"none",color:GY,cursor:"pointer",fontSize:18,lineHeight:1,padding:4}}>×</button>
+        </div>
+      ))}
+
       {/* PROFILE */}
       <div style={{background:WH,borderRadius:14,padding:20,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)",display:"flex",alignItems:"center",gap:14}}>
         <img src={user.picture} style={{width:52,height:52,borderRadius:"50%",border:`2px solid ${P}`}} alt=""/>
