@@ -136,7 +136,21 @@ function useAuth() {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
-  const [page, setPage] = useState("home");
+  const VALID_PAGES = ["home","dashboard","howto","privacy","terms"];
+  const pageFromHash = () => {
+    const h = window.location.hash.replace("#","");
+    return VALID_PAGES.includes(h) ? h : "home";
+  };
+  const [page, setPageRaw] = useState(pageFromHash);
+  const setPage = (p) => {
+    setPageRaw(p);
+    window.location.hash = p === "home" ? "" : p;
+  };
+  useEffect(() => {
+    const onHashChange = () => setPageRaw(pageFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("commission");
@@ -651,7 +665,7 @@ function LegalPage({type, setPage}) {
     ["Security","GCash numbers are stored in masked format after your first withdrawal. We use encrypted storage for all personal data."],
     ["Contact NPC","If you believe your privacy rights have been violated, contact the National Privacy Commission at www.privacy.gov.ph or (02) 8234-2228."]
   ] : [
-    ["About ShopSaya",`ShopSaya is a cashback affiliate platform. We earn commission from Shopee when you buy through our links and share half with you as cashback. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
+    ["About ShopSaya",`ShopSaya is a cashback affiliate platform. We earn commission from Shopee when you buy through our links and share half with you as cashback. ShopSaya is NOT officially affiliated with Shopee Philippines.\n\nPowered by: MSB IT Solutions`],
     ["Eligibility","Must be 18+, a Philippine resident, with a valid Facebook account and GCash. One account per person. Multiple accounts will result in permanent ban and forfeiture of all cashback."],
     ["How Cashback Works","Earned when you click our link and complete a Shopee purchase. Cancelled or returned orders get no cashback. Cashback amounts shown are estimates and may change."],
     ["Withdrawals",`Minimum: ${fp(MIN_WITHDRAWAL)}. GCash only. Processed within 24–72 business hours. Cashback earnings are subject to Philippine taxes.`],
@@ -677,7 +691,7 @@ function LegalPage({type, setPage}) {
         {sections.map(([h,b],i)=>(
           <div key={i} style={{marginBottom:20,paddingBottom:20,borderBottom:i<sections.length-1?"1px solid #F3F4F6":"none"}}>
             <div style={{fontWeight:700,fontSize:14,color:DK,marginBottom:6}}>{i+1}. {h}</div>
-            <div style={{fontSize:13,color:GY,lineHeight:1.8}}>{b}</div>
+            <div style={{fontSize:13,color:GY,lineHeight:1.8,whiteSpace:"pre-line"}}>{b}</div>
           </div>
         ))}
         <div style={{marginTop:20,padding:14,background:LG,borderRadius:10,fontSize:11,color:"#9CA3AF",textAlign:"center"}}>
