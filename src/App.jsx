@@ -136,7 +136,7 @@ function useAuth() {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
-  const VALID_PAGES = ["home","dashboard","howto","privacy","terms"];
+  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell"];
   const pageFromHash = () => {
     const h = window.location.hash.replace("#","");
     return VALID_PAGES.includes(h) ? h : "home";
@@ -234,6 +234,9 @@ export default function App() {
                 {label}
               </button>
             ))}
+            <button onClick={()=>setPage("sell")} style={{background:page==="sell"?AC:AL,color:page==="sell"?WH:AC,border:`1.5px solid ${AC}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+              🏪 Seller ka?
+            </button>
             {user ? (
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>setPage("dashboard")} style={{background:page==="dashboard"?P:LG,color:page==="dashboard"?WH:DK,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
@@ -258,6 +261,7 @@ export default function App() {
       {page==="howto" && <HowItWorks setPage={setPage} />}
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
       {page==="terms" && <LegalPage type="terms" setPage={setPage} />}
+      {page==="sell" && <SellerPage showToast={showToast} />}
 
       {showLogin && <LoginModal onLogin={handleLogin} onClose={()=>setShowLogin(false)} />}
 
@@ -276,7 +280,7 @@ export default function App() {
         </div>
         <div style={{marginBottom:10,color:"#6B7280"}}>ShopSaya PH — Masaya mag-shop at kumita! · Shopee Affiliate: {AFFILIATE_ID}</div>
         <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap",marginBottom:12}}>
-          {[["privacy","Privacy Policy"],["terms","Terms of Service"],["howto","How It Works"]].map(([pg,label])=>(
+          {[["privacy","Privacy Policy"],["terms","Terms of Service"],["howto","How It Works"],["sell","Mga Seller"]].map(([pg,label])=>(
             <button key={pg} onClick={()=>setPage(pg)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:12,textDecoration:"underline"}}>{label}</button>
           ))}
         </div>
@@ -504,6 +508,75 @@ function RequestItem({user, showToast}) {
     </div>
   );
 }
+
+// ─── SELLER PAGE ────────────────────────────────────────────────────────────
+function SellerPage({showToast}) {
+  const [link, setLink] = useState("");
+  const [sellerName, setSellerName] = useState("");
+  const [contact, setContact] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    const l = link.trim(), n = sellerName.trim();
+    if (!l || !/^https?:\/\//i.test(l)) { showToast("I-paste ang buong Shopee product link (dapat magsimula sa https://)", "error"); return; }
+    if (!n) { showToast("I-type ang pangalan ng shop mo", "error"); return; }
+    setBusy(true);
+    try {
+      await addDoc(collection(db, "sellerSubmissions"), {
+        link: l,
+        sellerName: n,
+        contact: contact.trim() || null,
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+      setDone(true);
+    } catch (e) {
+      console.error("Failed to submit product:", e);
+      showToast("Hindi na-submit. Subukan ulit.", "error");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{maxWidth:560,margin:"0 auto",padding:"40px 20px"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:36,marginBottom:8}}>🏪</div>
+        <div style={{fontWeight:800,fontSize:22,color:DK,marginBottom:6}}>May Produkto Ka? Ilista Dito!</div>
+        <div style={{fontSize:13,color:GY,maxWidth:420,margin:"0 auto"}}>
+          I-submit ang Shopee product link mo. Kung qualified ang commission rate, ilalagay namin ito sa ShopSaya at ipopromote namin sa mga shopper — libre!
+        </div>
+      </div>
+
+      {done ? (
+        <div style={{background:AL,border:`1.5px solid ${AC}`,borderRadius:14,padding:24,textAlign:"center"}}>
+          <div style={{fontSize:28,marginBottom:8}}>✅</div>
+          <div style={{fontWeight:700,fontSize:15,color:DK,marginBottom:6}}>Salamat sa pag-submit!</div>
+          <div style={{fontSize:13,color:GY}}>Susuriin namin ang commission rate ng product mo within 1-2 business days. Makikita mo ito sa Deals page kapag na-approve.</div>
+        </div>
+      ) : (
+        <div style={{background:WH,borderRadius:16,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Shopee Product Link *</label>
+            <input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://shopee.ph/product/..." style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Pangalan ng Shop *</label>
+            <input value={sellerName} onChange={e=>setSellerName(e.target.value)} placeholder="hal. Aling Marites Beauty Store" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Facebook o Contact Number (optional)</label>
+            <input value={contact} onChange={e=>setContact(e.target.value)} placeholder="Para makontak ka namin kung may tanong" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <button onClick={submit} disabled={busy} style={{width:"100%",background:AC,color:WH,border:"none",borderRadius:10,padding:"13px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1}}>
+            {busy ? "Sending..." : "I-submit ang Produkto"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ─── PRODUCT CARD ─────────────────────────────────────────────────────────────
 function ProductCard({product:p, onShop, onCopy, copied, user}) {
