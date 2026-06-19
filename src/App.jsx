@@ -206,11 +206,23 @@ export default function App() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated = filtered.slice((prodPage-1)*PER_PAGE, prodPage*PER_PAGE);
 
-  const handleShop = p => {
+  const handleShop = async p => {
     window.open(p.affiliateLink, "_blank");
     if (user) {
-      addTransaction({ type:"cashback", amount:getCashback(p), status:"pending", product:p.title, productId:p.id });
-      showToast(`✅ ${fp(getCashback(p))} cashback recorded! Complete your order to confirm.`);
+      try {
+        await addDoc(collection(db, "clicks"), {
+          userId: user.id,
+          userName: user.name,
+          productId: p.id,
+          productTitle: p.title,
+          potentialCashback: getCashback(p),
+          clickedAt: serverTimestamp(),
+          credited: false,
+        });
+      } catch (e) {
+        console.error("Failed to log click:", e);
+      }
+      showToast(`Link opened sa Shopee! I-complete ang order mo para makakuha ng cashback.`);
     } else {
       setShowLogin(true);
     }
@@ -624,9 +636,11 @@ const ADMIN_UID = "0QbPdrae5YTaURCqW4l6HEEH23l2";
 function AdminPage({user, showToast, products}) {
   const [submissions, setSubmissions] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [clicks, setClicks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
   const [dealNotes, setDealNotes] = useState({});
+  const [creditAmts, setCreditAmts] = useState({});
 
   const isAdmin = user && user.id === ADMIN_UID;
 
@@ -638,6 +652,8 @@ function AdminPage({user, showToast, products}) {
         setSubmissions(subSnap.docs.map(d => ({id: d.id, ...d.data()})));
         const reqSnap = await getDocs(query(collection(db, "productRequests"), where("status", "==", "pending")));
         setRequests(reqSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        const clickSnap = await getDocs(query(collection(db, "clicks"), where("credited", "==", false)));
+        setClicks(clickSnap.docs.map(d => ({id: d.id, ...d.data()})));
       } catch (e) {
         console.error("Failed to load admin data:", e);
       }
@@ -706,6 +722,33 @@ function AdminPage({user, showToast, products}) {
     } catch (e) { console.error(e); }
   };
 
+  const creditCashback = async (click) => {
+    const amount = Number(creditAmts[click.id] ?? click.potentialCashback);
+    if (!amount || amount <= 0) { showToast("Invalid amount.", "error"); return; }
+    try {
+      const userRef = doc(db, "users", click.userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) { showToast("User not found.", "error"); return; }
+      const userData = userSnap.data();
+      const txs = [...(userData.transactions||[]), {
+        type: "cashback", amount, status: "available",
+        product: click.productTitle, productId: click.productId,
+        date: new Date().toISOString(), id: Date.now(),
+      }];
+      const pending   = txs.filter(t=>t.status==="pending").reduce((a,t)=>a+t.amount,0);
+      const available = txs.filter(t=>t.status==="available").reduce((a,t)=>a+t.amount,0);
+      const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+t.amount,0);
+      const withdrawn = txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+t.amount,0);
+      await setDoc(userRef, { transactions: txs, wallet: { pending, available, totalEarned, withdrawn } }, { merge: true });
+      await updateDoc(doc(db, "clicks", click.id), { credited: true });
+      setClicks(prev => prev.filter(c => c.id !== click.id));
+      showToast(`₱${amount} na-credit kay ${click.userName}!`);
+    } catch (e) {
+      console.error("Credit failed:", e);
+      showToast("Failed to credit. Check console.", "error");
+    }
+  };
+
   return (
     <div style={{maxWidth:840,margin:"0 auto",padding:"32px 16px"}}>
       <div style={{fontWeight:800,fontSize:22,marginBottom:20}}>Admin</div>
@@ -750,6 +793,20 @@ function AdminPage({user, showToast, products}) {
           <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
           <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
           <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
+        </div>
+      ))}
+
+      <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Cashback Claims ({clicks.length})</div>
+      <div style={{fontSize:12,color:GY,marginBottom:14}}>I-credit lang kung verified mo na talagang nag-checkout ang user sa Shopee.</div>
+      {clicks.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending claims.</div>}
+      {clicks.map(click => (
+        <div key={click.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{click.userName}</div>
+            <div style={{fontSize:12,color:GY}}>Clicked: {click.productTitle} · Suggested: ₱{click.potentialCashback}</div>
+          </div>
+          <input type="number" defaultValue={click.potentialCashback} onChange={e=>setCreditAmts(prev=>({...prev,[click.id]:e.target.value}))} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+          <button onClick={()=>creditCashback(click)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Credit Cashback</button>
         </div>
       ))}
     </div>
