@@ -650,7 +650,7 @@ function AdminPage({user, showToast, products}) {
 
   const approveSubmission = async (sub) => {
     const d = drafts[sub.id] || {};
-    const price = Number(d.price), commRate = Number(d.commRate), category = d.category;
+    const price = Number(d.price), commRate = Number(d.commRate ?? 2), category = d.category;
     if (!price || !commRate || !category) { showToast("Kumpletuhin lahat ng fields (price, commission, category).", "error"); return; }
     try {
       const newId = "seller_" + sub.id;
@@ -711,7 +711,7 @@ function AdminPage({user, showToast, products}) {
             <div style={{fontSize:12,color:GY,marginBottom:8}}>Seller: {sub.sellerName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
               <input placeholder="Price ₱" type="number" onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-              <input placeholder="Commission %" type="number" onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <input placeholder="Commission %" type="number" defaultValue={2} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
               <input placeholder="Discount % (optional)" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:140,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
               <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}>
                 <option value="" disabled>Category</option>
