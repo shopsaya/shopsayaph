@@ -158,7 +158,15 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [products, setProducts] = useState([]);
   const PER_PAGE = 20;
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "products"), snap => {
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, e => console.error("Failed to load products:", e));
+    return unsub;
+  }, []);
 
   const showToast = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null), 3500); };
 
@@ -181,14 +189,6 @@ export default function App() {
       </div>
     );
   }
-
-  const [products, setProducts] = useState([]);
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "products"), snap => {
-      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, e => console.error("Failed to load products:", e));
-    return unsub;
-  }, []);
 
   const filtered = products.filter(p =>
     (cat==="All" || p.category===cat) &&
