@@ -603,7 +603,7 @@ function SellerPage({showToast}) {
 
 
 // ─── ADMIN PAGE ─────────────────────────────────────────────────────────────
-const ADMIN_EMAIL = "shopsayaph1080@gmail.com";
+const ADMIN_UID = "0QbPdrae5YTaURCqW4l6HEEH23l2";
 
 function AdminPage({user, showToast, products}) {
   const [submissions, setSubmissions] = useState([]);
@@ -612,7 +612,7 @@ function AdminPage({user, showToast, products}) {
   const [drafts, setDrafts] = useState({});
   const [dealNotes, setDealNotes] = useState({});
 
-  const isAdmin = user && user.email === ADMIN_EMAIL;
+  const isAdmin = user && user.id === ADMIN_UID;
 
   useEffect(() => {
     if (!isAdmin) { setLoading(false); return; }
