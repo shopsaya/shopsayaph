@@ -523,6 +523,8 @@ function SellerPage({showToast}) {
   const [link, setLink] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [contact, setContact] = useState("");
+  const [price, setPrice] = useState("");
+  const [commRate, setCommRate] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -530,6 +532,8 @@ function SellerPage({showToast}) {
     const l = link.trim(), n = sellerName.trim();
     if (!l || !/^https?:\/\//i.test(l)) { showToast("I-paste ang buong Shopee product link (dapat magsimula sa https://)", "error"); return; }
     if (!n) { showToast("I-type ang pangalan ng shop mo", "error"); return; }
+    if (!price || Number(price) <= 0) { showToast("I-type ang tamang price ng product mo", "error"); return; }
+    if (!commRate || Number(commRate) <= 0) { showToast("I-type ang commission rate na inaalok mo", "error"); return; }
     setBusy(true);
 
     let preview = { title: null, image: null };
@@ -551,6 +555,8 @@ function SellerPage({showToast}) {
         contact: contact.trim() || null,
         title: preview.title || null,
         image: preview.image || null,
+        price: Number(price),
+        commRate: Number(commRate),
         createdAt: serverTimestamp(),
         status: "pending",
       });
@@ -587,6 +593,16 @@ function SellerPage({showToast}) {
           <div style={{marginBottom:14}}>
             <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Pangalan ng Shop *</label>
             <input value={sellerName} onChange={e=>setSellerName(e.target.value)} placeholder="hal. Aling Marites Beauty Store" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            <div style={{flex:1}}>
+              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Price ₱ *</label>
+              <input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="hal. 299" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Commission % *</label>
+              <input type="number" value={commRate} onChange={e=>setCommRate(e.target.value)} placeholder="hal. 10" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            </div>
           </div>
           <div style={{marginBottom:20}}>
             <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Facebook o Contact Number (optional)</label>
@@ -650,7 +666,7 @@ function AdminPage({user, showToast, products}) {
 
   const approveSubmission = async (sub) => {
     const d = drafts[sub.id] || {};
-    const price = Number(d.price), commRate = Number(d.commRate ?? 2), category = d.category;
+    const price = Number(d.price ?? sub.price), commRate = Number(d.commRate ?? sub.commRate ?? 2), category = d.category;
     if (!price || !commRate || !category) { showToast("Kumpletuhin lahat ng fields (price, commission, category).", "error"); return; }
     try {
       const newId = "seller_" + sub.id;
@@ -710,8 +726,8 @@ function AdminPage({user, showToast, products}) {
             <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
             <div style={{fontSize:12,color:GY,marginBottom:8}}>Seller: {sub.sellerName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-              <input placeholder="Price ₱" type="number" onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-              <input placeholder="Commission %" type="number" defaultValue={2} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <input placeholder="Price ₱" type="number" defaultValue={sub.price || ""} onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <input placeholder="Commission %" type="number" defaultValue={sub.commRate || 2} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
               <input placeholder="Discount % (optional)" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:140,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
               <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}>
                 <option value="" disabled>Category</option>
