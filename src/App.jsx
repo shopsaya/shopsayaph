@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc, onSnapshot } from "firebase/firestore";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SITE_NAME = "ShopSaya";
@@ -41,8 +41,8 @@ const WH = "#FFFFFF";
 const fp = n => "₱" + Number(n).toLocaleString("en-PH");
 const getCashback = p => Math.floor((p.price * p.commRate) / 100 / 2);
 
-// ─── PRODUCTS ────────────────────────────────────────────────────────────────
-const PRODUCTS = [
+// ─── SEED PRODUCTS (used once to migrate into Firestore via Admin page) ───────
+const SEED_PRODUCTS = [
   {id:"10225333379",title:"RJ Gigline - Skycaster Electric Guitar (Stratocaster)",image:"https://down-ws-ph.img.susercontent.com/ph-11134207-7r98t-lm8fghjny55b4e.webp",price:10999,sold:84,commRate:5,discount:0,category:"Music",affiliateLink:"https://s.shopee.ph/110YjIhQC8"},
   {id:"50957597615",title:"800VA 480W UPS Uninterruptible Power Supply Smart LCD",image:"https://down-ws-ph.img.susercontent.com/ph-11134207-81ztl-mm6x0t9lqznz2c.webp",price:1758,sold:28,commRate:9,discount:67,category:"Electronics",affiliateLink:"https://s.shopee.ph/8pjQ3hLRC7"},
   {id:"27757777092",title:"DITO Home WiFi Pro w/ 15 Days UNLI 5G Data",image:"https://down-ws-ph.img.susercontent.com/ph-11134207-820la-mpgqynipt89a6d.webp",price:1490,sold:10000,commRate:12,discount:25,category:"Electronics",affiliateLink:"https://s.shopee.ph/AKYDqSTGoK"},
@@ -79,7 +79,7 @@ function useAuth() {
         const ref = doc(db, "users", fbUser.uid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
-          setUser({ id: fbUser.uid, ...snap.data() });
+          setUser({ id: fbUser.uid, ...snap.data(), email: fbUser.email });
         } else {
           const fresh = {
             name: fbUser.displayName || "ShopSaya Member",
@@ -91,7 +91,7 @@ function useAuth() {
             gcash: "",
           };
           await setDoc(ref, fresh);
-          setUser({ id: fbUser.uid, ...fresh });
+          setUser({ id: fbUser.uid, ...fresh, email: fbUser.email });
         }
       } catch (e) {
         console.error("Failed to load user profile:", e);
@@ -136,7 +136,7 @@ function useAuth() {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
-  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell"];
+  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell","admin"];
   const pageFromHash = () => {
     const h = window.location.hash.replace("#","");
     return VALID_PAGES.includes(h) ? h : "home";
@@ -182,7 +182,15 @@ export default function App() {
     );
   }
 
-  const filtered = PRODUCTS.filter(p =>
+  const [products, setProducts] = useState([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "products"), snap => {
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, e => console.error("Failed to load products:", e));
+    return unsub;
+  }, []);
+
+  const filtered = products.filter(p =>
     (cat==="All" || p.category===cat) &&
     (!search || p.title.toLowerCase().includes(search.toLowerCase()))
   ).sort((a,b) => {
@@ -256,12 +264,13 @@ export default function App() {
         </div>
       </header>
 
-      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} />}
+      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
       {page==="dashboard" && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} />}
       {page==="howto" && <HowItWorks setPage={setPage} />}
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
       {page==="terms" && <LegalPage type="terms" setPage={setPage} />}
       {page==="sell" && <SellerPage showToast={showToast} />}
+      {page==="admin" && <AdminPage user={user} showToast={showToast} products={products} />}
 
       {showLogin && <LoginModal onLogin={handleLogin} onClose={()=>setShowLogin(false)} />}
 
@@ -323,8 +332,8 @@ function LoginModal({onLogin, onClose}) {
 }
 
 // ─── HOME PAGE ────────────────────────────────────────────────────────────────
-function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage,showToast}) {
-  const total = PRODUCTS.reduce((a,p)=>a+getCashback(p),0);
+function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage,showToast,products}) {
+  const total = products.reduce((a,p)=>a+getCashback(p),0);
   return (
     <>
       {/* HERO BANNER */}
@@ -342,7 +351,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
               I-shop sa Shopee gamit ang aming links at kumita ng real cashback — auto-tracked sa iyong ShopSaya wallet. Mag-withdraw sa GCash pag ₱100 na!
             </p>
             <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-              {[[PRODUCTS.length+"","Products"],["Up to 40%","Commission"],["₱"+total.toLocaleString(),"Cashback Pool"]].map(([n,l],i)=>(
+              {[[products.length+"","Products"],["Up to 40%","Commission"],["₱"+total.toLocaleString(),"Cashback Pool"]].map(([n,l],i)=>(
                 <div key={i} style={{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 16px",backdropFilter:"blur(8px)"}}>
                   <div style={{fontSize:18,fontWeight:800}}>{n}</div>
                   <div style={{fontSize:11,opacity:.8,marginTop:2}}>{l}</div>
@@ -592,6 +601,144 @@ function SellerPage({showToast}) {
   );
 }
 
+
+// ─── ADMIN PAGE ─────────────────────────────────────────────────────────────
+const ADMIN_EMAIL = "shopsayaph1080@gmail.com";
+
+function AdminPage({user, showToast, products}) {
+  const [submissions, setSubmissions] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState({});
+  const [dealNotes, setDealNotes] = useState({});
+
+  const isAdmin = user && user.email === ADMIN_EMAIL;
+
+  useEffect(() => {
+    if (!isAdmin) { setLoading(false); return; }
+    (async () => {
+      try {
+        const subSnap = await getDocs(query(collection(db, "sellerSubmissions"), where("status", "==", "pending")));
+        setSubmissions(subSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        const reqSnap = await getDocs(query(collection(db, "productRequests"), where("status", "==", "pending")));
+        setRequests(reqSnap.docs.map(d => ({id: d.id, ...d.data()})));
+      } catch (e) {
+        console.error("Failed to load admin data:", e);
+      }
+      setLoading(false);
+    })();
+  }, [isAdmin]);
+
+  if (!user) return <div style={{padding:60,textAlign:"center",color:GY}}>Mag-login muna.</div>;
+  if (!isAdmin) return <div style={{padding:60,textAlign:"center",color:GY}}>Access denied.</div>;
+  if (loading) return <div style={{padding:60,textAlign:"center",color:GY}}>Loading...</div>;
+
+  const setDraft = (id, field, val) => setDrafts(prev => ({...prev, [id]: {...prev[id], [field]: val}}));
+
+  const seedProducts = async () => {
+    if (products.length > 0) { showToast("May existing products na, hindi na kailangan i-seed ulit.", "error"); return; }
+    try {
+      for (const p of SEED_PRODUCTS) {
+        await setDoc(doc(db, "products", String(p.id)), p);
+      }
+      showToast(`${SEED_PRODUCTS.length} products na-seed sa Firestore!`);
+    } catch (e) {
+      console.error("Seeding failed:", e);
+      showToast("Seeding failed. Check console.", "error");
+    }
+  };
+
+  const approveSubmission = async (sub) => {
+    const d = drafts[sub.id] || {};
+    const price = Number(d.price), commRate = Number(d.commRate), category = d.category;
+    if (!price || !commRate || !category) { showToast("Kumpletuhin lahat ng fields (price, commission, category).", "error"); return; }
+    try {
+      const newId = "seller_" + sub.id;
+      await setDoc(doc(db, "products", newId), {
+        id: newId,
+        title: sub.title || sub.sellerName,
+        image: sub.image || "",
+        price,
+        sold: 0,
+        commRate,
+        discount: Number(d.discount) || 0,
+        category,
+        affiliateLink: sub.link,
+      });
+      await updateDoc(doc(db, "sellerSubmissions", sub.id), { status: "approved" });
+      setSubmissions(prev => prev.filter(s => s.id !== sub.id));
+      showToast("Na-publish ang product!");
+    } catch (e) {
+      console.error("Approve failed:", e);
+      showToast("Failed to approve. Check console.", "error");
+    }
+  };
+
+  const rejectSubmission = async (id) => {
+    try {
+      await updateDoc(doc(db, "sellerSubmissions", id), { status: "rejected" });
+      setSubmissions(prev => prev.filter(s => s.id !== id));
+      showToast("Submission rejected.");
+    } catch (e) { console.error(e); }
+  };
+
+  const fulfillRequest = async (id) => {
+    try {
+      await updateDoc(doc(db, "productRequests", id), { status: "fulfilled", dealNote: dealNotes[id] || "" });
+      setRequests(prev => prev.filter(r => r.id !== id));
+      showToast("Marked as fulfilled — user will see the notification.");
+    } catch (e) { console.error(e); }
+  };
+
+  return (
+    <div style={{maxWidth:840,margin:"0 auto",padding:"32px 16px"}}>
+      <div style={{fontWeight:800,fontSize:22,marginBottom:20}}>Admin</div>
+
+      {products.length === 0 && (
+        <div style={{background:PL,border:`1.5px solid ${P}`,borderRadius:12,padding:16,marginBottom:28}}>
+          <div style={{fontSize:13,marginBottom:10}}>Walang products sa Firestore pa. I-seed ang original 20 products?</div>
+          <button onClick={seedProducts} style={{background:P,color:WH,border:"none",borderRadius:8,padding:"9px 18px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Seed Initial Products</button>
+        </div>
+      )}
+
+      <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Seller Submissions ({submissions.length})</div>
+      {submissions.length===0 && <div style={{color:GY,fontSize:13,marginBottom:28}}>Walang pending submissions.</div>}
+      {submissions.map(sub => (
+        <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12,display:"flex",gap:14}}>
+          {sub.image ? <img src={sub.image} alt="" style={{width:70,height:70,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:70,height:70,borderRadius:8,background:LG,flexShrink:0}}/>}
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
+            <div style={{fontSize:12,color:GY,marginBottom:8}}>Seller: {sub.sellerName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+              <input placeholder="Price ₱" type="number" onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <input placeholder="Commission %" type="number" onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <input placeholder="Discount % (optional)" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:140,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+              <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}>
+                <option value="" disabled>Category</option>
+                {CATEGORIES.filter(c=>c!=="All").map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>approveSubmission(sub)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Approve & Publish</button>
+              <button onClick={()=>rejectSubmission(sub.id)} style={{background:"none",color:GY,border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 16px",fontWeight:600,fontSize:12,cursor:"pointer"}}>Reject</button>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Product Requests ({requests.length})</div>
+      {requests.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending requests.</div>}
+      {requests.map(req => (
+        <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12}}>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>"{req.text}"</div>
+          <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
+          <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
+          <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── PRODUCT CARD ─────────────────────────────────────────────────────────────
 function ProductCard({product:p, onShop, onCopy, copied, user}) {
