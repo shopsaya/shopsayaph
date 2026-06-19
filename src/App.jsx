@@ -522,11 +522,26 @@ function SellerPage({showToast}) {
     if (!l || !/^https?:\/\//i.test(l)) { showToast("I-paste ang buong Shopee product link (dapat magsimula sa https://)", "error"); return; }
     if (!n) { showToast("I-type ang pangalan ng shop mo", "error"); return; }
     setBusy(true);
+
+    let preview = { title: null, image: null };
+    try {
+      const res = await fetch("https://fetchproductpreview-1071825458706.asia-southeast1.run.app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: l }),
+      });
+      if (res.ok) preview = await res.json();
+    } catch (e) {
+      console.error("Preview fetch failed, continuing without it:", e);
+    }
+
     try {
       await addDoc(collection(db, "sellerSubmissions"), {
         link: l,
         sellerName: n,
         contact: contact.trim() || null,
+        title: preview.title || null,
+        image: preview.image || null,
         createdAt: serverTimestamp(),
         status: "pending",
       });
