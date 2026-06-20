@@ -901,6 +901,7 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
   const [gcashName, setGcashName] = useState("");
   const [amt, setAmt] = useState("");
   const [fulfilled, setFulfilled] = useState([]);
+  const [myClicks, setMyClicks] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -911,6 +912,13 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
         setFulfilled(unseen);
       } catch (e) {
         console.error("Failed to load request notifications:", e);
+      }
+      try {
+        const cq = query(collection(db, "clicks"), where("userId", "==", user.id), where("credited", "==", false));
+        const csnap = await getDocs(cq);
+        setMyClicks(csnap.docs.map(d => ({id: d.id, ...d.data()})));
+      } catch (e) {
+        console.error("Failed to load projected cashback:", e);
       }
     })();
   }, [user.id]);
@@ -969,6 +977,21 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
           </div>
         ))}
       </div>
+
+      {/* PROJECTED CASHBACK */}
+      {myClicks.length > 0 && (
+        <div style={{background:"#FFFBEB",border:"1.5px solid #FDE68A",borderRadius:14,padding:16,marginBottom:14}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#92400E",marginBottom:4}}>🔍 Projected Cashback (₱{myClicks.reduce((a,c)=>a+c.potentialCashback,0)})</div>
+          <div style={{fontSize:12,color:"#92400E",marginBottom:10,lineHeight:1.5}}>
+            Hindi pa ito guaranteed cashback — makikita lang dito ang mga na-click mo. Kapag na-confirm naming na-checkout mo talaga ang order sa Shopee, ililipat ito sa "Pending" o "Available" sa wallet mo.
+          </div>
+          {myClicks.map(c => (
+            <div key={c.id} style={{fontSize:12,color:"#78350F",padding:"6px 0",borderTop:"1px solid #FDE68A"}}>
+              {c.productTitle} — <strong>₱{c.potentialCashback}</strong>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* WITHDRAW */}
       <div style={{marginBottom:14}}>
