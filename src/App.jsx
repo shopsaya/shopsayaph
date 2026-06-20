@@ -58,11 +58,7 @@ const computeWallet = txs => {
   const available = txs.filter(t=>t.type==="cashback" && t.status==="available").reduce((a,t)=>a+(Number(t.amount)||0),0)
                    + txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+(Number(t.amount)||0),0);
   const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+(Number(t.amount)||0),0);
-  const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
-  return { pending, available, totalEarned, withdrawn };
-};
-
-// Windowed pagination — shows first/last page plus a few around the current
+  // Windowed pagination — shows first/last page plus a few around the current
 // one, with "..." for gaps, instead of every single page number.
 const getPageNumbers = (current, total) => {
   if (total <= 7) return Array.from({length:total}, (_,i)=>i+1);
@@ -74,6 +70,10 @@ const getPageNumbers = (current, total) => {
   if (end < total-1) pages.push("...");
   pages.push(total);
   return pages;
+};
+
+const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
+  return { pending, available, totalEarned, withdrawn };
 };
 
 // Lightweight keyword match against the live catalog — used by the "Ask ShopSaya" assistant
@@ -208,7 +208,7 @@ export default function App() {
   const [installEvent, setInstallEvent] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)")?.matches || navigator.standalone === true;
 
   useEffect(() => {
     if (isStandalone || localStorage.getItem("ss_install_dismissed")) return;
@@ -497,7 +497,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
       {/* HERO BANNER */}
       <div style={{background:`linear-gradient(135deg,#EE4D2D 0%,#FF6633 100%)`,color:WH,padding:"40px 20px"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:24}}>
-          <div style={{maxWidth:520}}>
+          <div style={{maxWidth:520,textAlign:"left"}}>
             <div style={{display:"inline-block",background:"rgba(255,255,255,.15)",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:14}}>
               {CASHBACK_LIVE ? "🇵🇭 SHOPEE PHILIPPINES · CASHBACK DEALS" : "🇵🇭 SHOPEE PHILIPPINES · LEGIT DEALS ONLY"}
             </div>
@@ -513,32 +513,29 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
               </>
             ) : (
               <>
-                <h1 style={{fontSize:"clamp(26px,4vw,42px)",fontWeight:900,margin:"0 0 10px",lineHeight:1.15}}>
-                  Takot ka bang ma-scam?
-                  <span style={{color:"#A5F3FC"}}> ShopSaya ka muna!</span>
+                <h1 style={{fontSize:"clamp(28px,4.5vw,46px)",fontWeight:900,margin:"0 0 24px",lineHeight:1.15}}>
+                  SHOP SAYA!
+                  <span style={{color:"#A5F3FC"}}> Shop Safely! Shop Surely! Shop Saya na!</span>
                 </h1>
-                <p style={{fontSize:15,opacity:.9,margin:"0 0 24px",lineHeight:1.7}}>
-                  Lahat ng deals dito legit at na-check namin — Preferred Sellers, maraming sold, walang gulo. I-type sa Ask ShopSaya ang hinahanap mo, o mag-browse sa mga curated deals dito. Walang account na kailangan.
-                </p>
               </>
             )}
             <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
               {(CASHBACK_LIVE
                 ? [[products.length+"","Products"],["Up to 40%","Commission"],["₱"+total.toLocaleString(),"Cashback Pool"]]
-                : [[products.length+"","Curated Deals"],["100%","Legit-Checked"],["🤖","AI Deal Finder"]]
+                : [["Thousands of","Curated Deals"],["100%","Legit-Checked Sellers"],["🤖","AI Shopper Assistant"]]
               ).map(([n,l],i)=>(
                 <div key={i} style={{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 16px",backdropFilter:"blur(8px)"}}>
-                  <div style={{fontSize:18,fontWeight:800}}>{n}</div>
+                  <div style={{fontSize:n.length>6?14:18,fontWeight:800}}>{n}</div>
                   <div style={{fontSize:11,opacity:.8,marginTop:2}}>{l}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* WALLET CARD / TRUST CARD */}
+          {/* WALLET CARD / HOW TO USE CARD */}
           <div style={{background:WH,borderRadius:20,padding:24,width:260,boxShadow:"0 8px 40px rgba(0,0,0,.2)"}}>
             {CASHBACK_LIVE ? (
-              user ? (
+            user ? (
               <>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
                   <img src={user.picture} style={{width:42,height:42,borderRadius:"50%",border:`2px solid ${P}`}} alt=""/>
@@ -562,7 +559,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
                   </div>
                 </div>
               </>
-              ) : (
+            ) : (
               <>
                 <div style={{textAlign:"center",marginBottom:16}}>
                   <div style={{width:52,height:52,borderRadius:16,background:PL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:24}}>💰</div>
@@ -575,19 +572,23 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
                 </button>
                 <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"#9CA3AF"}}>Libre · Hindi kailangan ng GCash para sumali</div>
               </>
-              )
+            )
             ) : (
               <>
                 <div style={{textAlign:"center",marginBottom:14}}>
-                  <div style={{width:52,height:52,borderRadius:16,background:PL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:24}}>🛡️</div>
-                  <div style={{fontWeight:700,fontSize:15,color:DK,marginBottom:4}}>Bakit ShopSaya?</div>
+                  <div style={{width:52,height:52,borderRadius:16,background:PL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:26}}>⚡</div>
+                  <div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:10}}>Paano gamitin?</div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
-                  {[["✅","Preferred Sellers lang"],["🚫","Walang scam, walang gulo"],["🤖","AI maghahanap ng deal para sa'yo"]].map(([ic,txt],i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:DK}}>
-                      <span style={{fontSize:15}}>{ic}</span>{txt}
-                    </div>
-                  ))}
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:DK,fontWeight:600}}>
+                    <span style={{fontSize:16}}>🔍</span> I-search ang item mo
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:DK,fontWeight:600}}>
+                    <span style={{fontSize:16}}>🎉</span> Pinakasulit na deal — sa'yo na!
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:DK,fontWeight:600}}>
+                    <span style={{fontSize:16}}>🛡️</span> Syempre, secured ito!
+                  </div>
                 </div>
                 <button onClick={()=>setPage("ask")} style={{width:"100%",background:P,color:WH,border:"none",borderRadius:10,padding:"11px",cursor:"pointer",fontWeight:700,fontSize:13}}>
                   🤖 Ask ShopSaya
@@ -893,7 +894,7 @@ function AskShopSaya({user, products, showToast, setShowLogin, handleShop, handl
       <div style={{textAlign:"center",marginBottom:16}}>
         <div style={{fontSize:30,marginBottom:4}}>🤖</div>
         <div style={{fontWeight:800,fontSize:20,color:DK}}>Ask ShopSaya</div>
-        <div style={{fontSize:12,color:GY,marginTop:2}}>Takot ka bang ma-scam? Legit deals lang, legit sellers lang — i-type lang ang hinahanap mo.</div>
+        <div style={{fontSize:12,color:GY,marginTop:2}}>Shop Safely! Shop Surely! Legit-checked sellers lang — i-type lang ang hinahanap mo.</div>
       </div>
 
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:WH,borderRadius:14,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,.06)",marginBottom:12}}>
@@ -1689,7 +1690,7 @@ function HowItWorks({setPage, goHome}) {
       <div style={{textAlign:"center",marginBottom:36}}>
         <h2 style={{fontSize:28,fontWeight:800,marginBottom:8,color:DK}}>Paano gumagana ang ShopSaya?</h2>
         <p style={{fontSize:15,color:GY,lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>
-          {CASHBACK_LIVE ? `"Masaya mag-shop at kumita!" — earn real peso cashback on every Shopee order you make through our links.` : `"Takot ka bang ma-scam?" — legit deals lang, legit sellers lang. Wala kang account na kailangan, basta i-type lang o i-browse.`}
+          {CASHBACK_LIVE ? `"Masaya mag-shop at kumita!" — earn real peso cashback on every Shopee order you make through our links.` : `"Shop Safely! Shop Surely! Shop Saya na!" — legit-checked sellers lang. Wala kang account na kailangan, basta i-type lang o i-browse.`}
         </p>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:32}}>
