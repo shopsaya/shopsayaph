@@ -40,6 +40,21 @@ const WH = "#FFFFFF";
 
 const fp = n => "₱" + Number(n).toLocaleString("en-PH");
 const getCashback = p => Math.floor((p.price * p.commRate) / 100 / 2);
+const LOAD_NETWORKS = ["Globe","TM","Smart","TNT","DITO"];
+
+// Shared wallet math — used by useAuth, AdminPage's creditCashback, and markPaid.
+// "available" already nets out withdrawal/load requests the moment they're submitted
+// (their amount is negative), so the same balance can't be redeemed twice while a
+// payout is still pending. "withdrawn" only counts payouts an admin has actually
+// marked as completed/paid.
+const computeWallet = txs => {
+  const pending = txs.filter(t=>t.type==="cashback" && t.status==="pending").reduce((a,t)=>a+(Number(t.amount)||0),0);
+  const available = txs.filter(t=>t.type==="cashback" && t.status==="available").reduce((a,t)=>a+(Number(t.amount)||0),0)
+                   + txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+(Number(t.amount)||0),0);
+  const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+(Number(t.amount)||0),0);
+  const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
+  return { pending, available, totalEarned, withdrawn };
+};
 
 // ─── SEED PRODUCTS (used once to migrate into Firestore via Admin page) ───────
 const SEED_PRODUCTS = [
@@ -118,12 +133,8 @@ function useAuth() {
   const addTransaction = useCallback((tx) => {
     setUser(prev => {
       if (!prev) return prev;
-      const txs = [...(prev.transactions||[]), {...tx, date: new Date().toISOString(), id: Date.now()}];
-      const pending   = txs.filter(t=>t.status==="pending").reduce((a,t)=>a+t.amount,0);
-      const available = txs.filter(t=>t.status==="available").reduce((a,t)=>a+t.amount,0);
-      const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+t.amount,0);
-      const withdrawn = txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+t.amount,0);
-      const wallet = { pending, available, totalEarned, withdrawn };
+      const txs = [...(prev.transactions||[]), {...tx, date: new Date().toISOString(), id: tx.id || Date.now()}];
+      const wallet = computeWallet(txs);
       const next = { ...prev, transactions: txs, wallet };
       persist(prev.id, { transactions: txs, wallet });
       return next;
@@ -637,6 +648,7 @@ function AdminPage({user, showToast, products}) {
   const [submissions, setSubmissions] = useState([]);
   const [requests, setRequests] = useState([]);
   const [clicks, setClicks] = useState([]);
+  const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
   const [dealNotes, setDealNotes] = useState({});
@@ -654,6 +666,8 @@ function AdminPage({user, showToast, products}) {
         setRequests(reqSnap.docs.map(d => ({id: d.id, ...d.data()})));
         const clickSnap = await getDocs(query(collection(db, "clicks"), where("credited", "==", false)));
         setClicks(clickSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        const payoutSnap = await getDocs(query(collection(db, "payoutRequests"), where("status", "==", "pending")));
+        setPayouts(payoutSnap.docs.map(d => ({id: d.id, ...d.data()})));
       } catch (e) {
         console.error("Failed to load admin data:", e);
       }
@@ -735,17 +749,32 @@ function AdminPage({user, showToast, products}) {
         product: click.productTitle, productId: click.productId,
         date: new Date().toISOString(), id: Date.now(),
       }];
-      const pending   = txs.filter(t=>t.status==="pending").reduce((a,t)=>a+t.amount,0);
-      const available = txs.filter(t=>t.status==="available").reduce((a,t)=>a+t.amount,0);
-      const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+t.amount,0);
-      const withdrawn = txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+t.amount,0);
-      await setDoc(userRef, { transactions: txs, wallet: { pending, available, totalEarned, withdrawn } }, { merge: true });
+      const wallet = computeWallet(txs);
+      await setDoc(userRef, { transactions: txs, wallet }, { merge: true });
       await updateDoc(doc(db, "clicks", click.id), { credited: true });
       setClicks(prev => prev.filter(c => c.id !== click.id));
       showToast(`₱${amount} na-credit kay ${click.userName}!`);
     } catch (e) {
       console.error("Credit failed:", e);
       showToast("Failed to credit. Check console.", "error");
+    }
+  };
+
+  const markPaid = async (req) => {
+    try {
+      const userRef = doc(db, "users", req.userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) { showToast("User not found.", "error"); return; }
+      const userData = userSnap.data();
+      const txs = (userData.transactions||[]).map(t => t.id === req.txId ? {...t, status: "completed"} : t);
+      const wallet = computeWallet(txs);
+      await setDoc(userRef, { transactions: txs, wallet }, { merge: true });
+      await updateDoc(doc(db, "payoutRequests", req.id), { status: "completed" });
+      setPayouts(prev => prev.filter(p => p.id !== req.id));
+      showToast(`Marked ${fp(req.amount)} ${req.method==="load"?"load":"GCash"} payout as sent!`);
+    } catch (e) {
+      console.error("Mark paid failed:", e);
+      showToast("Failed to mark as paid. Check console.", "error");
     }
   };
 
@@ -760,7 +789,7 @@ function AdminPage({user, showToast, products}) {
         </div>
       )}
 
-      <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"flex-start"}}>
 
         {/* COLUMN 1: SELLER SUBMISSIONS */}
         <div style={{flex:1,minWidth:320}}>
@@ -822,6 +851,26 @@ function AdminPage({user, showToast, products}) {
                 <input type="number" defaultValue={click.potentialCashback} onChange={e=>setCreditAmts(prev=>({...prev,[click.id]:e.target.value}))} style={{width:80,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
                 <button onClick={()=>creditCashback(click)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Credit Cashback</button>
               </div>
+            </div>
+          ))}
+          </div>
+        </div>
+
+        {/* COLUMN 4: PAYOUTS (GCash + Load) */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Pending Payouts ({payouts.length})</div>
+          <div style={{fontSize:12,color:GY,marginBottom:12}}>I-mark as paid lang pagkatapos mo talagang ipadala ang GCash o load sa customer.</div>
+          {payouts.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending payouts.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {payouts.map(req => (
+            <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{req.userName} · {fp(req.amount)}</div>
+              <div style={{fontSize:12,color:GY,marginBottom:10}}>
+                {req.method==="load"
+                  ? `📱 Load: ${req.mobileNumber} (${req.network})`
+                  : `💸 GCash: ${req.gcash} · ${req.gcashName}`}
+              </div>
+              <button onClick={()=>markPaid(req)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark as Paid</button>
             </div>
           ))}
           </div>
@@ -897,8 +946,11 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
   const [showW, setShowW] = useState(false);
+  const [method, setMethod] = useState("gcash"); // "gcash" | "load"
   const [gcashNum, setGcashNum] = useState(user.gcash||"");
   const [gcashName, setGcashName] = useState("");
+  const [mobileNum, setMobileNum] = useState(user.gcash||"");
+  const [network, setNetwork] = useState(LOAD_NETWORKS[0]);
   const [amt, setAmt] = useState("");
   const [fulfilled, setFulfilled] = useState([]);
   const [myClicks, setMyClicks] = useState([]);
@@ -928,15 +980,36 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
     try { await updateDoc(doc(db, "productRequests", id), { seen: true }); } catch (e) { console.error("Failed to mark seen:", e); }
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     const n = parseFloat(amt);
-    if(!gcashNum||gcashNum.length<11){showToast("Enter a valid GCash number","error");return;}
-    if(!gcashName){showToast("Enter your GCash account name","error");return;}
-    if(!n||n<MIN_WITHDRAWAL){showToast(`Minimum withdrawal is ${fp(MIN_WITHDRAWAL)}`,"error");return;}
+    if(!n || isNaN(n) || n<MIN_WITHDRAWAL){showToast(`Minimum redemption is ${fp(MIN_WITHDRAWAL)}`,"error");return;}
     if(n>(user.wallet?.available||0)){showToast("Insufficient balance","error");return;}
-    updateUser({gcash:gcashNum});
-    addTransaction({type:"withdrawal",amount:-n,status:"processing",gcash:gcashNum,gcashName});
-    showToast(`✅ Withdrawal of ${fp(n)} submitted! Processing within 24 hours.`);
+
+    let details = {};
+    if(method==="gcash"){
+      if(!gcashNum||gcashNum.length<11){showToast("Enter a valid GCash number","error");return;}
+      if(!gcashName){showToast("Enter your GCash account name","error");return;}
+      updateUser({gcash:gcashNum});
+      details = {gcash:gcashNum, gcashName};
+    } else {
+      if(!mobileNum||mobileNum.length<11){showToast("Enter a valid mobile number","error");return;}
+      details = {mobileNumber:mobileNum, network};
+    }
+
+    const txId = Date.now();
+    addTransaction({id:txId, type:"withdrawal", method, amount:-n, status:"processing", ...details});
+    try {
+      await addDoc(collection(db, "payoutRequests"), {
+        userId: user.id, userName: user.name, method, amount: n, ...details,
+        status: "pending", txId, requestedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Failed to log payout request:", e);
+    }
+
+    showToast(method==="gcash"
+      ? `✅ Withdrawal of ${fp(n)} submitted! Processing within 24 hours.`
+      : `✅ ${fp(n)} load redemption submitted! Processing within 24 hours.`);
     setShowW(false); setAmt("");
   };
 
@@ -998,20 +1071,55 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
         {!showW ? (
           <button onClick={()=>setShowW(true)} disabled={(user.wallet?.available||0)<MIN_WITHDRAWAL}
             style={{width:"100%",background:(user.wallet?.available||0)>=MIN_WITHDRAWAL?P:"#E5E7EB",color:(user.wallet?.available||0)>=MIN_WITHDRAWAL?WH:"#9CA3AF",border:"none",borderRadius:12,padding:"13px",cursor:(user.wallet?.available||0)>=MIN_WITHDRAWAL?"pointer":"default",fontWeight:700,fontSize:14}}>
-            {(user.wallet?.available||0)>=MIN_WITHDRAWAL?`💸 Withdraw to GCash`:`Need ${fp(Math.max(0,MIN_WITHDRAWAL-(user.wallet?.available||0)))} more to withdraw`}
+            {(user.wallet?.available||0)>=MIN_WITHDRAWAL?`💸 Redeem Cashback`:`Need ${fp(Math.max(0,MIN_WITHDRAWAL-(user.wallet?.available||0)))} more to redeem`}
           </button>
         ) : (
           <div style={{background:WH,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:16,color:DK}}>💸 Withdraw to GCash</div>
-            {[["GCash Number","09XXXXXXXXX",gcashNum,setGcashNum,"tel"],["GCash Account Name","Full name on GCash",gcashName,setGcashName,"text"],["Amount",`Min ${fp(MIN_WITHDRAWAL)}`,amt,setAmt,"number"]].map(([label,ph,val,setter,type],i)=>(
-              <div key={i} style={{marginBottom:12}}>
-                <label style={{fontSize:12,color:GY,fontWeight:600,display:"block",marginBottom:5}}>{label}</label>
-                <input value={val} onChange={e=>setter(e.target.value)} placeholder={ph} type={type}
-                  style={{width:"100%",padding:"10px 14px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"}}/>
-              </div>
-            ))}
+            <div style={{fontWeight:700,fontSize:15,marginBottom:14,color:DK}}>💸 Redeem Cashback</div>
+
+            {/* METHOD TOGGLE */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {[["gcash","💸 GCash"],["load","📱 Load"]].map(([m,label])=>(
+                <button key={m} onClick={()=>setMethod(m)}
+                  style={{flex:1,padding:"9px 0",borderRadius:8,border:method===m?`1.5px solid ${P}`:"1.5px solid #E5E7EB",background:method===m?PL:WH,color:method===m?P:GY,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {method==="gcash" ? (
+              [["GCash Number","09XXXXXXXXX",gcashNum,setGcashNum,"tel"],["GCash Account Name","Full name on GCash",gcashName,setGcashName,"text"]].map(([label,ph,val,setter,type],i)=>(
+                <div key={i} style={{marginBottom:12}}>
+                  <label style={{fontSize:12,color:GY,fontWeight:600,display:"block",marginBottom:5}}>{label}</label>
+                  <input value={val} onChange={e=>setter(e.target.value)} placeholder={ph} type={type}
+                    style={{width:"100%",padding:"10px 14px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"}}/>
+                </div>
+              ))
+            ) : (
+              <>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:12,color:GY,fontWeight:600,display:"block",marginBottom:5}}>Mobile Number</label>
+                  <input value={mobileNum} onChange={e=>setMobileNum(e.target.value)} placeholder="09XXXXXXXXX" type="tel"
+                    style={{width:"100%",padding:"10px 14px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"}}/>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:12,color:GY,fontWeight:600,display:"block",marginBottom:5}}>Network</label>
+                  <select value={network} onChange={e=>setNetwork(e.target.value)}
+                    style={{width:"100%",padding:"10px 14px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"}}>
+                    {LOAD_NETWORKS.map(n=><option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:GY,fontWeight:600,display:"block",marginBottom:5}}>Amount</label>
+              <input value={amt} onChange={e=>setAmt(e.target.value)} placeholder={`Min ${fp(MIN_WITHDRAWAL)}`} type="number"
+                style={{width:"100%",padding:"10px 14px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"}}/>
+            </div>
+
             <div style={{background:"#F0F9FF",borderRadius:8,padding:12,marginBottom:14,fontSize:12,color:"#0369A1"}}>
-              ℹ️ Your GCash number is only used for this withdrawal and is stored securely.
+              ℹ️ {method==="gcash" ? "Your GCash number is only used for this withdrawal and is stored securely." : "Load will be sent to this number within 24–72 hours after verification."}
             </div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={handleWithdraw} style={{flex:1,background:P,color:WH,border:"none",borderRadius:8,padding:"11px",cursor:"pointer",fontWeight:700,fontSize:13}}>Confirm</button>
@@ -1035,16 +1143,18 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
           <div key={tx.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #F3F4F6"}}>
             <div>
               <div style={{fontSize:13,fontWeight:600,color:DK,marginBottom:2}}>
-                {tx.type==="cashback"?"💰 Cashback":"💸 Withdrawal"}
+                {tx.type==="cashback"?"💰 Cashback":tx.method==="load"?"📱 Load":"💸 Withdrawal"}
                 {tx.product&&<span style={{fontWeight:400,color:GY}}> · {tx.product.substring(0,28)}...</span>}
               </div>
               <div style={{fontSize:11,color:GY,marginBottom:4}}>{new Date(tx.date).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"})}</div>
-              <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:tx.status==="pending"?"#FEF3C7":tx.status==="available"?AL:tx.status==="processing"?"#DBEAFE":LG,color:tx.status==="pending"?"#D97706":tx.status==="available"?AC:tx.status==="processing"?"#1D4ED8":GY}}>
-                {tx.status?.charAt(0).toUpperCase()+tx.status?.slice(1)}
+              <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,
+                background:tx.status==="pending"?"#FEF3C7":tx.status==="available"?AL:tx.status==="processing"?"#DBEAFE":tx.status==="completed"?AL:LG,
+                color:tx.status==="pending"?"#D97706":tx.status==="available"?AC:tx.status==="processing"?"#1D4ED8":tx.status==="completed"?AC:GY}}>
+                {tx.status==="completed"?"Paid":tx.status?.charAt(0).toUpperCase()+tx.status?.slice(1)}
               </span>
             </div>
             <div style={{fontSize:15,fontWeight:800,color:tx.amount>0?AC:RD}}>
-              {tx.amount>0?"+":""}{fp(Math.abs(tx.amount))}
+              {Number.isFinite(Number(tx.amount)) ? `${tx.amount>0?"+":""}${fp(Math.abs(tx.amount))}` : "—"}
             </div>
           </div>
         ))}
