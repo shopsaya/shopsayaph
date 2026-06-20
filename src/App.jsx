@@ -103,7 +103,7 @@ const SEED_PRODUCTS = [
   {id:"99912345632",title:"Cosrx Advanced Snail 96 Mucin Power Essence 100ml",image:"https://down-ws-ph.img.susercontent.com/ph-11134207-7r98o-cosrx.webp",price:899,sold:3200,commRate:18,discount:10,category:"Health & Beauty",affiliateLink:"https://s.shopee.ph/8pjQ3hLRC7"},
 ];
 
-const CATEGORIES = ["All","Electronics","Music","Stationery","Home & Living","Health & Beauty","Gadgets"];
+const CATEGORIES = ["All","Electronics","Music","Stationery","Home & Living","Health & Beauty","Fashion","Grocery","Gadgets"];
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function useAuth() {
@@ -982,6 +982,34 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     }
   };
 
+  const [bulkJson, setBulkJson] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkAddProducts = async () => {
+    let arr;
+    try {
+      arr = JSON.parse(bulkJson);
+      if (!Array.isArray(arr)) throw new Error("not an array");
+    } catch (e) {
+      showToast("Invalid JSON — check the format and try again.", "error");
+      return;
+    }
+    setBulkBusy(true);
+    let added = 0;
+    try {
+      for (const p of arr) {
+        if (!p.id || !p.title || !p.affiliateLink) continue;
+        await setDoc(doc(db, "products", String(p.id)), p, { merge: true });
+        added++;
+      }
+      showToast(`${added} products added/updated sa catalog!`);
+      setBulkJson("");
+    } catch (e) {
+      console.error("Bulk add failed:", e);
+      showToast("Bulk add failed. Check console.", "error");
+    }
+    setBulkBusy(false);
+  };
+
   const approveSubmission = async (sub) => {
     const d = drafts[sub.id] || {};
     const price = Number(d.price ?? sub.price), commRate = Number(d.commRate ?? sub.commRate ?? 2), category = d.category;
@@ -1082,6 +1110,17 @@ function AdminPage({user, setShowLogin, showToast, products}) {
           <button onClick={seedProducts} style={{background:P,color:WH,border:"none",borderRadius:8,padding:"9px 18px",fontWeight:700,fontSize:13,cursor:"pointer"}}>Seed Initial Products</button>
         </div>
       )}
+
+      {/* BULK ADD PRODUCTS — paste a JSON array (Claude will format this for you from your Shopee Batch Get Link exports) */}
+      <div style={{background:WH,border:"1.5px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:28}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>📦 Bulk Add Products</div>
+        <div style={{fontSize:12,color:GY,marginBottom:10}}>Paste mo lang dito ang JSON array na binigay ko galing sa Batch Get Link mo, then "Add to Catalog."</div>
+        <textarea value={bulkJson} onChange={e=>setBulkJson(e.target.value)} placeholder='[{"id":"123","title":"...","price":499,"sold":120,"commRate":10,"discount":0,"category":"Electronics","affiliateLink":"https://s.shopee.ph/...","image":"https://..."}]'
+          style={{width:"100%",minHeight:90,padding:10,border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11,fontFamily:"monospace",boxSizing:"border-box",marginBottom:8,resize:"vertical"}}/>
+        <button onClick={bulkAddProducts} disabled={bulkBusy||!bulkJson.trim()} style={{background:bulkBusy?"#9CA3AF":AC,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:bulkBusy?"default":"pointer"}}>
+          {bulkBusy?"Adding...":"Add to Catalog"}
+        </button>
+      </div>
 
       <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"flex-start"}}>
 
@@ -1212,8 +1251,8 @@ function AdminPage({user, setShowLogin, showToast, products}) {
 function ProductCard({product:p, onShop, onCopy, copied, user}) {
   const cb = getCashback(p);
   const orig = p.discount ? Math.round(p.price/(1-p.discount/100)) : null;
-  const [imgOk, setImgOk] = useState(true);
-  const icons = {Music:"🎸",Electronics:"📱",Fashion:"👗","Health & Beauty":"💄",Sports:"⚽",Toys:"🧸",Stationery:"✏️","Home & Living":"🏠",Gadgets:"🔧"};
+  const [imgOk, setImgOk] = useState(!!p.image);
+  const icons = {Music:"🎸",Electronics:"📱",Fashion:"👗","Health & Beauty":"💄",Sports:"⚽",Toys:"🧸",Stationery:"✏️","Home & Living":"🏠",Gadgets:"🔧",Grocery:"🛒"};
 
   return (
     <div style={{background:WH,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.07)",display:"flex",flexDirection:"column",transition:"transform .15s,box-shadow .15s"}}
