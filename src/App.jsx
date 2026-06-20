@@ -921,6 +921,7 @@ function AdminPage({user, setShowLogin, showToast, products}) {
   const [creditAmts, setCreditAmts] = useState({});
   const [bulkJson, setBulkJson] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [imgFillProgress, setImgFillProgress] = useState(null);
 
   const isAdmin = user && user.id === ADMIN_UID;
 
@@ -1008,6 +1009,38 @@ function AdminPage({user, setShowLogin, showToast, products}) {
       showToast("Bulk add failed. Check console.", "error");
     }
     setBulkBusy(false);
+  };
+
+  // Re-uses the existing fetchProductPreview Cloud Function (the one built for seller
+  // submissions) to backfill images for products that came from a CSV export with no
+  // image URL. Runs one at a time with a short pause between calls — gentle on Shopee's
+  // anti-bot limits, and lets the progress counter update live.
+  const backfillImages = async () => {
+    const targets = products.filter(p => !p.image);
+    if (targets.length === 0) { showToast("Lahat ng products may image na.", "error"); return; }
+    setImgFillProgress({ done: 0, total: targets.length, found: 0 });
+    let found = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      try {
+        const res = await fetch("https://fetchproductpreview-1071825458706.asia-southeast1.run.app", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ link: p.affiliateLink }),
+        });
+        const data = await res.json();
+        if (data.image) {
+          await updateDoc(doc(db, "products", String(p.id)), { image: data.image });
+          found++;
+        }
+      } catch (e) {
+        console.error("Image backfill failed for", p.id, e);
+      }
+      setImgFillProgress({ done: i + 1, total: targets.length, found });
+      await new Promise(r => setTimeout(r, 400));
+    }
+    showToast(`Done! ${found}/${targets.length} images found.`);
+    setImgFillProgress(null);
   };
 
   const approveSubmission = async (sub) => {
@@ -1120,6 +1153,16 @@ function AdminPage({user, setShowLogin, showToast, products}) {
         <button onClick={bulkAddProducts} disabled={bulkBusy||!bulkJson.trim()} style={{background:bulkBusy?"#9CA3AF":AC,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:bulkBusy?"default":"pointer"}}>
           {bulkBusy?"Adding...":"Add to Catalog"}
         </button>
+
+        <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #F3F4F6"}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🖼️ Backfill Missing Images</div>
+          <div style={{fontSize:12,color:GY,marginBottom:10}}>
+            Para sa products na walang image (galing CSV export). Gagamitin ang existing fetchProductPreview function mo — isa-isa, may delay, para gentle sa Shopee.
+          </div>
+          <button onClick={backfillImages} disabled={!!imgFillProgress} style={{background:imgFillProgress?"#9CA3AF":P,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:imgFillProgress?"default":"pointer"}}>
+            {imgFillProgress ? `Naghahanap... ${imgFillProgress.done}/${imgFillProgress.total} (${imgFillProgress.found} found)` : "Backfill Images"}
+          </button>
+        </div>
       </div>
 
       <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"flex-start"}}>
