@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, FacebookAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc, onSnapshot, increment } from "firebase/firestore";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SITE_NAME = "ShopSaya";
@@ -9,6 +9,12 @@ const SITE_DOMAIN = "shopsayaph.com";
 const SITE_EMAIL = "shopsayaph@gmail.com";
 const MIN_WITHDRAWAL = 100;
 const AFFILIATE_ID = "kashim1080";
+
+// Master switch for the cashback/wallet/login system. We're launching with just the
+// curated-deals + Ask ShopSaya experience (no accounts needed) while the site builds
+// an audience. Nothing was deleted — flip this back to true once ready to relaunch
+// cashback, and Login/Wallet/Withdraw/Cashback-claims all come back as they were.
+const CASHBACK_LIVE = false;
 
 // ─── FIREBASE ────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -54,6 +60,23 @@ const computeWallet = txs => {
   const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+(Number(t.amount)||0),0);
   const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
   return { pending, available, totalEarned, withdrawn };
+};
+
+// Lightweight keyword match against the live catalog — used by the "Ask ShopSaya" assistant
+// so common requests get an instant answer instead of waiting on a manual request.
+const matchCatalog = (products, queryText) => {
+  const tokens = queryText.toLowerCase().split(/\s+/).filter(t=>t.length>2);
+  if (tokens.length===0) return [];
+  return products
+    .map(p => {
+      const hay = (p.title+" "+p.category).toLowerCase();
+      const score = tokens.reduce((a,t)=>a+(hay.includes(t)?1:0),0);
+      return {p, score};
+    })
+    .filter(x=>x.score>0)
+    .sort((a,b)=>b.score-a.score || getCashback(b.p)-getCashback(a.p))
+    .slice(0,5)
+    .map(x=>x.p);
 };
 
 // ─── SEED PRODUCTS (used once to migrate into Firestore via Admin page) ───────
@@ -147,7 +170,7 @@ function useAuth() {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
-  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell","admin"];
+  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell","admin","ask"];
   const pageFromHash = () => {
     const h = window.location.hash.replace("#","");
     return VALID_PAGES.includes(h) ? h : "home";
@@ -219,6 +242,12 @@ export default function App() {
 
   const handleShop = async p => {
     window.open(p.affiliateLink, "_blank");
+    if (!CASHBACK_LIVE) {
+      // Cashback program is paused — just track anonymous popularity, no account needed.
+      try { await updateDoc(doc(db, "products", p.id), { clickCount: increment(1) }); }
+      catch (e) { console.error("Failed to log click:", e); }
+      return;
+    }
     if (user) {
       try {
         await addDoc(collection(db, "clicks"), {
@@ -246,6 +275,36 @@ export default function App() {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  // For links sourced manually by an admin (via the Shopee affiliate dashboard) to fulfill
+  // an "Ask ShopSaya" request — not part of the regular `products` catalog, so it logs its
+  // own click record using the offer's own price/commRate snapshot.
+  const handleShopOffer = async (offer, requestId) => {
+    window.open(offer.link, "_blank");
+    if (!CASHBACK_LIVE) {
+      try { await updateDoc(doc(db, "productRequests", requestId), { clickCount: increment(1) }); }
+      catch (e) { console.error("Failed to log offer click:", e); }
+      return;
+    }
+    if (user) {
+      try {
+        await addDoc(collection(db, "clicks"), {
+          userId: user.id,
+          userName: user.name,
+          productId: `request_${requestId}_${offer.link}`,
+          productTitle: offer.title,
+          potentialCashback: getCashback({price:Number(offer.price)||0, commRate:Number(offer.commRate)||0}),
+          clickedAt: serverTimestamp(),
+          credited: false,
+        });
+      } catch (e) {
+        console.error("Failed to log offer click:", e);
+      }
+      showToast(`Link opened sa Shopee! I-complete ang order mo para makakuha ng cashback.`);
+    } else {
+      setShowLogin(true);
+    }
+  };
+
   return (
     <div style={{fontFamily:"'Segoe UI',system-ui,sans-serif",minHeight:"100vh",background:LG,color:DK}}>
       {/* HEADER */}
@@ -265,10 +324,13 @@ export default function App() {
                 {label}
               </button>
             ))}
+            <button onClick={()=>setPage("ask")} style={{background:page==="ask"?P:PL,color:page==="ask"?WH:P,border:"none",borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+              🤖 Ask ShopSaya
+            </button>
             <button onClick={()=>setPage("sell")} style={{background:page==="sell"?AC:AL,color:page==="sell"?WH:AC,border:`1.5px solid ${AC}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
               🏪 Seller ka?
             </button>
-            {user ? (
+            {CASHBACK_LIVE && (user ? (
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>setPage("dashboard")} style={{background:page==="dashboard"?P:LG,color:page==="dashboard"?WH:DK,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                   <img src={user.picture} style={{width:22,height:22,borderRadius:"50%"}} alt=""/>
@@ -282,18 +344,19 @@ export default function App() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                 Login
               </button>
-            )}
+            ))}
           </nav>
         </div>
       </header>
 
       {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
-      {page==="dashboard" && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} />}
+      {page==="dashboard" && CASHBACK_LIVE && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} handleShopOffer={handleShopOffer} />}
       {page==="howto" && <HowItWorks setPage={setPage} />}
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
       {page==="terms" && <LegalPage type="terms" setPage={setPage} />}
       {page==="sell" && <SellerPage showToast={showToast} />}
-      {page==="admin" && <AdminPage user={user} showToast={showToast} products={products} />}
+      {page==="ask" && <AskShopSaya user={user} products={products} showToast={showToast} setShowLogin={setShowLogin} handleShop={handleShop} handleShopOffer={handleShopOffer} setPage={setPage} />}
+      {page==="admin" && <AdminPage user={user} setShowLogin={setShowLogin} showToast={showToast} products={products} />}
 
       {showLogin && <LoginModal onLogin={handleLogin} onClose={()=>setShowLogin(false)} />}
 
@@ -316,7 +379,7 @@ export default function App() {
             <button key={pg} onClick={()=>setPage(pg)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:12,textDecoration:"underline"}}>{label}</button>
           ))}
         </div>
-        <div style={{color:"#374151"}}>Min withdrawal: {fp(MIN_WITHDRAWAL)} · © {new Date().getFullYear()} ShopSaya PH</div>
+        <div style={{color:"#374151"}}>{CASHBACK_LIVE && `Min withdrawal: ${fp(MIN_WITHDRAWAL)} · `}© {new Date().getFullYear()} ShopSaya PH</div>
       </footer>
     </div>
   );
@@ -330,18 +393,20 @@ function LoginModal({onLogin, onClose}) {
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
           <div style={{width:40,height:40,borderRadius:12,background:P,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:13}}>SS</div>
           <div>
-            <div style={{fontWeight:800,fontSize:18,color:DK}}>Sumali sa ShopSaya</div>
-            <div style={{fontSize:12,color:GY}}>Masaya mag-shop at kumita! 😊</div>
+            <div style={{fontWeight:800,fontSize:18,color:DK}}>{CASHBACK_LIVE ? "Sumali sa ShopSaya" : "ShopSaya Admin"}</div>
+            <div style={{fontSize:12,color:GY}}>{CASHBACK_LIVE ? "Masaya mag-shop at kumita! 😊" : "Login para sa pamamahala ng site."}</div>
           </div>
         </div>
 
-        <div style={{background:PL,borderRadius:12,padding:16,marginBottom:20}}>
-          {[["💰","Kumita ng cashback sa bawat Shopee order"],["🔒","Hindi kailangan ng GCash para mag-join"],["📊","I-track ang iyong kita sa ShopSaya wallet"],["💸","Mag-withdraw sa GCash anytime pag ₱100 na"]].map(([ic,txt],i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<3?10:0,fontSize:13,color:DK}}>
-              <span>{ic}</span> {txt}
-            </div>
-          ))}
-        </div>
+        {CASHBACK_LIVE && (
+          <div style={{background:PL,borderRadius:12,padding:16,marginBottom:20}}>
+            {[["💰","Kumita ng cashback sa bawat Shopee order"],["🔒","Hindi kailangan ng GCash para mag-join"],["📊","I-track ang iyong kita sa ShopSaya wallet"],["💸","Mag-withdraw sa GCash anytime pag ₱100 na"]].map(([ic,txt],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<3?10:0,fontSize:13,color:DK}}>
+                <span>{ic}</span> {txt}
+              </div>
+            ))}
+          </div>
+        )}
 
         <button onClick={onLogin} style={{width:"100%",background:"#1877F2",color:WH,border:"none",borderRadius:12,padding:"13px",cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12}}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
@@ -364,17 +429,34 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:24}}>
           <div style={{maxWidth:520}}>
             <div style={{display:"inline-block",background:"rgba(255,255,255,.15)",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:14}}>
-              🇵🇭 SHOPEE PHILIPPINES · CASHBACK DEALS
+              {CASHBACK_LIVE ? "🇵🇭 SHOPEE PHILIPPINES · CASHBACK DEALS" : "🇵🇭 SHOPEE PHILIPPINES · LEGIT DEALS ONLY"}
             </div>
-            <h1 style={{fontSize:"clamp(26px,4vw,42px)",fontWeight:900,margin:"0 0 10px",lineHeight:1.15}}>
-              Mag-shop. Kumita. Masaya!
-              <span style={{color:"#A5F3FC"}}>ShopSaya ka!</span>
-            </h1>
-            <p style={{fontSize:15,opacity:.9,margin:"0 0 24px",lineHeight:1.7}}>
-              I-shop sa Shopee gamit ang aming links at kumita ng real cashback — auto-tracked sa iyong ShopSaya wallet. Mag-withdraw sa GCash pag ₱100 na!
-            </p>
+            {CASHBACK_LIVE ? (
+              <>
+                <h1 style={{fontSize:"clamp(26px,4vw,42px)",fontWeight:900,margin:"0 0 10px",lineHeight:1.15}}>
+                  Mag-shop. Kumita. Masaya!
+                  <span style={{color:"#A5F3FC"}}>ShopSaya ka!</span>
+                </h1>
+                <p style={{fontSize:15,opacity:.9,margin:"0 0 24px",lineHeight:1.7}}>
+                  I-shop sa Shopee gamit ang aming links at kumita ng real cashback — auto-tracked sa iyong ShopSaya wallet. Mag-withdraw sa GCash pag ₱100 na!
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 style={{fontSize:"clamp(26px,4vw,42px)",fontWeight:900,margin:"0 0 10px",lineHeight:1.15}}>
+                  Takot ka bang ma-scam?
+                  <span style={{color:"#A5F3FC"}}> ShopSaya ka muna!</span>
+                </h1>
+                <p style={{fontSize:15,opacity:.9,margin:"0 0 24px",lineHeight:1.7}}>
+                  Lahat ng deals dito legit at na-check namin — Preferred Sellers, maraming sold, walang gulo. I-type sa Ask ShopSaya ang hinahanap mo, o mag-browse sa mga curated deals dito. Walang account na kailangan.
+                </p>
+              </>
+            )}
             <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-              {[[products.length+"","Products"],["Up to 40%","Commission"],["₱"+total.toLocaleString(),"Cashback Pool"]].map(([n,l],i)=>(
+              {(CASHBACK_LIVE
+                ? [[products.length+"","Products"],["Up to 40%","Commission"],["₱"+total.toLocaleString(),"Cashback Pool"]]
+                : [[products.length+"","Curated Deals"],["100%","Legit-Checked"],["🤖","AI Deal Finder"]]
+              ).map(([n,l],i)=>(
                 <div key={i} style={{background:"rgba(255,255,255,.12)",borderRadius:12,padding:"10px 16px",backdropFilter:"blur(8px)"}}>
                   <div style={{fontSize:18,fontWeight:800}}>{n}</div>
                   <div style={{fontSize:11,opacity:.8,marginTop:2}}>{l}</div>
@@ -383,9 +465,10 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
             </div>
           </div>
 
-          {/* WALLET CARD */}
+          {/* WALLET CARD / TRUST CARD */}
           <div style={{background:WH,borderRadius:20,padding:24,width:260,boxShadow:"0 8px 40px rgba(0,0,0,.2)"}}>
-            {user ? (
+            {CASHBACK_LIVE ? (
+              user ? (
               <>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
                   <img src={user.picture} style={{width:42,height:42,borderRadius:"50%",border:`2px solid ${P}`}} alt=""/>
@@ -409,7 +492,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
                   </div>
                 </div>
               </>
-            ) : (
+              ) : (
               <>
                 <div style={{textAlign:"center",marginBottom:16}}>
                   <div style={{width:52,height:52,borderRadius:16,background:PL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:24}}>💰</div>
@@ -421,6 +504,24 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
                   Login with Facebook
                 </button>
                 <div style={{textAlign:"center",marginTop:8,fontSize:11,color:"#9CA3AF"}}>Libre · Hindi kailangan ng GCash para sumali</div>
+              </>
+              )
+            ) : (
+              <>
+                <div style={{textAlign:"center",marginBottom:14}}>
+                  <div style={{width:52,height:52,borderRadius:16,background:PL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:24}}>🛡️</div>
+                  <div style={{fontWeight:700,fontSize:15,color:DK,marginBottom:4}}>Bakit ShopSaya?</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+                  {[["✅","Preferred Sellers lang"],["🚫","Walang scam, walang gulo"],["🤖","AI maghahanap ng deal para sa'yo"]].map(([ic,txt],i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:DK}}>
+                      <span style={{fontSize:15}}>{ic}</span>{txt}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>setPage("ask")} style={{width:"100%",background:P,color:WH,border:"none",borderRadius:10,padding:"11px",cursor:"pointer",fontWeight:700,fontSize:13}}>
+                  🤖 Ask ShopSaya
+                </button>
               </>
             )}
           </div>
@@ -445,7 +546,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
             </div>
             <select value={sort} onChange={e=>setSort(e.target.value)} style={{padding:"6px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,cursor:"pointer",background:WH,color:DK}}>
               <option value="commission">Highest Commission</option>
-              <option value="cashback">Most Cashback</option>
+              {CASHBACK_LIVE && <option value="cashback">Most Cashback</option>}
               <option value="discount">Biggest Discount</option>
               <option value="sold">Best Selling</option>
               <option value="price_asc">Price: Low → High</option>
@@ -456,7 +557,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
 
         <div style={{fontSize:13,color:GY,marginBottom:14}}>
           Showing <strong style={{color:DK}}>{filtered.length}</strong> deals
-          {!user && <span style={{color:P,marginLeft:8,fontSize:12,fontWeight:500}}>→ Mag-login para i-track ang cashback mo</span>}
+          {CASHBACK_LIVE && !user && <span style={{color:P,marginLeft:8,fontSize:12,fontWeight:500}}>→ Mag-login para i-track ang cashback mo</span>}
         </div>
 
         {/* GRID */}
@@ -641,10 +742,174 @@ function SellerPage({showToast}) {
 }
 
 
+// ─── ASK SHOPSAYA (AI-style deal finder chat) ────────────────────────────────
+function AskShopSaya({user, products, showToast, setShowLogin, handleShop, handleShopOffer, setPage}) {
+  const [messages, setMessages] = useState([
+    {role:"assistant", kind:"intro"}
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const scrollRef = useRef(null);
+
+  // Load past requests + their fulfillment as conversation history for logged-in users
+  useEffect(() => {
+    if (!user) { setHistoryLoaded(true); return; }
+    (async () => {
+      try {
+        const q = query(collection(db, "productRequests"), where("userId", "==", user.id));
+        const snap = await getDocs(q);
+        const past = snap.docs
+          .map(d => ({id:d.id, ...d.data()}))
+          .sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
+        const hist = [];
+        past.forEach(r => {
+          hist.push({role:"user", text:r.text});
+          if (r.status === "fulfilled") {
+            hist.push({role:"assistant", kind:"fulfilled", text:r.text, dealNote:r.dealNote, offers:r.offers||[], requestId:r.id});
+          } else {
+            hist.push({role:"assistant", kind:"pending", text:r.text});
+          }
+        });
+        setMessages(prev => [...prev, ...hist]);
+      } catch (e) {
+        console.error("Failed to load past requests:", e);
+      }
+      setHistoryLoaded(true);
+    })();
+  }, [user?.id]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({top: scrollRef.current.scrollHeight, behavior:"smooth"});
+  }, [messages, busy]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text) return;
+    if (text.length > 300) { showToast("Pasensya, masyadong haba. Paikliin pa konti.", "error"); return; }
+    setInput("");
+    setMessages(prev => [...prev, {role:"user", text}]);
+    setBusy(true);
+
+    const matches = matchCatalog(products, text);
+    if (matches.length > 0) {
+      setMessages(prev => [...prev, {role:"assistant", kind:"catalog", matches}]);
+      setBusy(false);
+      return;
+    }
+
+    try {
+      const ref = await addDoc(collection(db, "productRequests"), {
+        text,
+        userId: user?.id || null,
+        userName: user?.name || "Guest",
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+      setMessages(prev => [...prev, {role:"assistant", kind:"pending", text, requestId:ref.id}]);
+    } catch (e) {
+      console.error("Failed to submit request:", e);
+      setMessages(prev => [...prev, {role:"assistant", kind:"error"}]);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px",display:"flex",flexDirection:"column",height:"calc(100vh - 60px - 48px)"}}>
+      <div style={{textAlign:"center",marginBottom:16}}>
+        <div style={{fontSize:30,marginBottom:4}}>🤖</div>
+        <div style={{fontWeight:800,fontSize:20,color:DK}}>Ask ShopSaya</div>
+        <div style={{fontSize:12,color:GY,marginTop:2}}>Takot ka bang ma-scam? Legit deals lang, legit sellers lang — i-type lang ang hinahanap mo.</div>
+      </div>
+
+      <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:WH,borderRadius:14,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,.06)",marginBottom:12}}>
+        {messages.map((m,i) => {
+          if (m.role==="user") {
+            return (
+              <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+                <div style={{background:P,color:WH,borderRadius:"14px 14px 2px 14px",padding:"10px 14px",fontSize:13,maxWidth:"75%"}}>{m.text}</div>
+              </div>
+            );
+          }
+          return (
+            <div key={i} style={{display:"flex",gap:8,marginBottom:14,alignItems:"flex-start"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🤖</div>
+              <div style={{flex:1,minWidth:0}}>
+                {m.kind==="intro" && (
+                  <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,maxWidth:"90%"}}>
+                    Hi! Ako ang ShopSaya AI Deal Finder. Anong product hinahanap mo? (hal. "oven toaster", "wireless earbuds")
+                  </div>
+                )}
+                {m.kind==="catalog" && (
+                  <div style={{maxWidth:"95%"}}>
+                    <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,marginBottom:8}}>
+                      Heto ang mga legit na options na nakita ko para sa'yo:
+                    </div>
+                    {m.matches.map(p => (
+                      <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,background:WH,border:"1px solid #E5E7EB",borderRadius:10,padding:10,marginBottom:8}}>
+                        {p.image ? <img src={p.image} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:44,height:44,borderRadius:8,background:LG,flexShrink:0}}/>}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:12,fontWeight:700,color:DK,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.title}</div>
+                          <div style={{display:"flex",gap:6,alignItems:"baseline"}}>
+                            <span style={{fontSize:13,fontWeight:700,color:RD}}>{fp(p.price)}</span>
+                            {CASHBACK_LIVE ? <span style={{fontSize:11,color:AC,fontWeight:700}}>+{fp(getCashback(p))} cashback</span> : <span style={{fontSize:11,color:AC,fontWeight:700}}>✅ Legit</span>}
+                          </div>
+                        </div>
+                        <button onClick={()=>handleShop(p)} style={{flexShrink:0,background:P,color:WH,border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:12}}>{CASHBACK_LIVE ? "Shop & Earn" : "Shop Now"}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {m.kind==="pending" && (
+                  <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,maxWidth:"90%"}}>
+                    Wala pa kasi kami nito ngayon, pero hahanapan ka namin ng legit na deal! I-check mo lang ulit dito sa loob ng ilang oras.
+                  </div>
+                )}
+                {m.kind==="fulfilled" && (
+                  <div style={{maxWidth:"95%"}}>
+                    <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,marginBottom:m.offers?.length?8:0}}>
+                      Nahanap namin ito para sa "{m.text}"{m.dealNote?` — ${m.dealNote}`:"!"}
+                    </div>
+                    {m.offers?.map((o,oi)=><OfferMiniCard key={oi} offer={o} onShop={()=>handleShopOffer(o, m.requestId)} />)}
+                  </div>
+                )}
+                {m.kind==="error" && (
+                  <div style={{background:"#FEF2F2",borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:"#991B1B",maxWidth:"90%"}}>
+                    Sorry, may error. Subukan ulit.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {busy && (
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:PL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🤖</div>
+            <div style={{fontSize:12,color:GY}}>Naghahanap...</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{display:"flex",gap:8}}>
+        <input
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter") send();}}
+          placeholder="hal. oven toaster, wireless earbuds..."
+          style={{flex:1,padding:"12px 16px",border:"1.5px solid #E5E7EB",borderRadius:24,fontSize:13,outline:"none",boxSizing:"border-box"}}
+        />
+        <button onClick={send} disabled={busy} style={{background:P,color:WH,border:"none",borderRadius:24,padding:"12px 22px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:13,opacity:busy?.7:1,flexShrink:0}}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN PAGE ─────────────────────────────────────────────────────────────
 const ADMIN_UID = "0QbPdrae5YTaURCqW4l6HEEH23l2";
 
-function AdminPage({user, showToast, products}) {
+function AdminPage({user, setShowLogin, showToast, products}) {
   const [submissions, setSubmissions] = useState([]);
   const [requests, setRequests] = useState([]);
   const [clicks, setClicks] = useState([]);
@@ -652,6 +917,7 @@ function AdminPage({user, showToast, products}) {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
   const [dealNotes, setDealNotes] = useState({});
+  const [offerDrafts, setOfferDrafts] = useState({});
   const [creditAmts, setCreditAmts] = useState({});
 
   const isAdmin = user && user.id === ADMIN_UID;
@@ -664,10 +930,12 @@ function AdminPage({user, showToast, products}) {
         setSubmissions(subSnap.docs.map(d => ({id: d.id, ...d.data()})));
         const reqSnap = await getDocs(query(collection(db, "productRequests"), where("status", "==", "pending")));
         setRequests(reqSnap.docs.map(d => ({id: d.id, ...d.data()})));
-        const clickSnap = await getDocs(query(collection(db, "clicks"), where("credited", "==", false)));
-        setClicks(clickSnap.docs.map(d => ({id: d.id, ...d.data()})));
-        const payoutSnap = await getDocs(query(collection(db, "payoutRequests"), where("status", "==", "pending")));
-        setPayouts(payoutSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        if (CASHBACK_LIVE) {
+          const clickSnap = await getDocs(query(collection(db, "clicks"), where("credited", "==", false)));
+          setClicks(clickSnap.docs.map(d => ({id: d.id, ...d.data()})));
+          const payoutSnap = await getDocs(query(collection(db, "payoutRequests"), where("status", "==", "pending")));
+          setPayouts(payoutSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        }
       } catch (e) {
         console.error("Failed to load admin data:", e);
       }
@@ -675,11 +943,31 @@ function AdminPage({user, showToast, products}) {
     })();
   }, [isAdmin]);
 
-  if (!user) return <div style={{padding:60,textAlign:"center",color:GY}}>Mag-login muna.</div>;
+  if (!user) return (
+    <div style={{padding:60,textAlign:"center"}}>
+      <div style={{color:GY,marginBottom:14}}>Mag-login muna bilang admin.</div>
+      <button onClick={()=>setShowLogin(true)} style={{background:"#1877F2",color:WH,border:"none",borderRadius:8,padding:"10px 20px",cursor:"pointer",fontSize:14,fontWeight:600}}>Login with Facebook</button>
+    </div>
+  );
   if (!isAdmin) return <div style={{padding:60,textAlign:"center",color:GY}}>Access denied.</div>;
   if (loading) return <div style={{padding:60,textAlign:"center",color:GY}}>Loading...</div>;
 
   const setDraft = (id, field, val) => setDrafts(prev => ({...prev, [id]: {...prev[id], [field]: val}}));
+
+  const addOfferRow = (reqId) => setOfferDrafts(prev => {
+    const rows = prev[reqId]||[];
+    if (rows.length>=5) return prev;
+    return {...prev, [reqId]: [...rows, {title:"",link:"",price:"",commRate:""}]};
+  });
+  const updateOfferRow = (reqId, idx, field, val) => setOfferDrafts(prev => {
+    const rows = [...(prev[reqId]||[])];
+    rows[idx] = {...rows[idx], [field]: val};
+    return {...prev, [reqId]: rows};
+  });
+  const removeOfferRow = (reqId, idx) => setOfferDrafts(prev => {
+    const rows = (prev[reqId]||[]).filter((_,i)=>i!==idx);
+    return {...prev, [reqId]: rows};
+  });
 
   const seedProducts = async () => {
     if (products.length > 0) { showToast("May existing products na, hindi na kailangan i-seed ulit.", "error"); return; }
@@ -729,9 +1017,15 @@ function AdminPage({user, showToast, products}) {
   };
 
   const fulfillRequest = async (id) => {
+    const rows = (offerDrafts[id]||[]).filter(o => o.title?.trim() && o.link?.trim());
     try {
-      await updateDoc(doc(db, "productRequests", id), { status: "fulfilled", dealNote: dealNotes[id] || "" });
+      await updateDoc(doc(db, "productRequests", id), {
+        status: "fulfilled",
+        dealNote: dealNotes[id] || "",
+        offers: rows.map(o => ({title:o.title.trim(), link:o.link.trim(), price:Number(o.price)||0, commRate:Number(o.commRate)||0})),
+      });
       setRequests(prev => prev.filter(r => r.id !== id));
+      setOfferDrafts(prev => { const next={...prev}; delete next[id]; return next; });
       showToast("Marked as fulfilled — user will see the notification.");
     } catch (e) { console.error(e); }
   };
@@ -830,6 +1124,22 @@ function AdminPage({user, showToast, products}) {
             <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
               <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>"{req.text}"</div>
               <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
+
+              {(offerDrafts[req.id]||[]).map((row,idx)=>(
+                <div key={idx} style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
+                  <input placeholder="Product title" value={row.title} onChange={e=>updateOfferRow(req.id,idx,"title",e.target.value)} style={{flex:"1 1 110px",padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:6,fontSize:11}}/>
+                  <input placeholder="Shopee affiliate link" value={row.link} onChange={e=>updateOfferRow(req.id,idx,"link",e.target.value)} style={{flex:"1 1 130px",padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:6,fontSize:11}}/>
+                  <input placeholder="Price" type="number" value={row.price} onChange={e=>updateOfferRow(req.id,idx,"price",e.target.value)} style={{width:60,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:6,fontSize:11}}/>
+                  <input placeholder="Comm%" type="number" value={row.commRate} onChange={e=>updateOfferRow(req.id,idx,"commRate",e.target.value)} style={{width:55,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:6,fontSize:11}}/>
+                  <button onClick={()=>removeOfferRow(req.id,idx)} style={{background:"none",border:"none",color:RD,cursor:"pointer",fontSize:14,padding:"0 4px"}}>×</button>
+                </div>
+              ))}
+              {(offerDrafts[req.id]||[]).length<5 && (
+                <button onClick={()=>addOfferRow(req.id)} style={{background:"none",border:"1px dashed #D1D5DB",color:GY,borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",marginBottom:8}}>
+                  + Add link from Shopee dashboard ({(offerDrafts[req.id]||[]).length}/5)
+                </button>
+              )}
+
               <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
               <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
             </div>
@@ -837,6 +1147,8 @@ function AdminPage({user, showToast, products}) {
           </div>
         </div>
 
+        {CASHBACK_LIVE && (
+        <>
         {/* COLUMN 3: CASHBACK CLAIMS */}
         <div style={{flex:1,minWidth:320}}>
           <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Pending Cashback Claims ({clicks.length})</div>
@@ -875,6 +1187,21 @@ function AdminPage({user, showToast, products}) {
           ))}
           </div>
         </div>
+        </>
+        )}
+
+        {/* COLUMN: TOP CLICKED (popularity insight while cashback is paused) */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>🔥 Top Clicked Products</div>
+          <div style={{fontSize:12,color:GY,marginBottom:12}}>Anonymous click counts — useful para makita anong products ang pinaka-interesado ang mga tao.</div>
+          {[...products].sort((a,b)=>(b.clickCount||0)-(a.clickCount||0)).slice(0,10).map(p=>(
+            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #F3F4F6"}}>
+              <div style={{fontSize:12,color:DK,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:220}}>{p.title}</div>
+              <div style={{fontSize:12,fontWeight:700,color:P,flexShrink:0}}>{p.clickCount||0} clicks</div>
+            </div>
+          ))}
+          {products.every(p=>!p.clickCount) && <div style={{color:GY,fontSize:13}}>Walang clicks pa.</div>}
+        </div>
 
       </div>
     </div>
@@ -906,10 +1233,16 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           {p.sold>=1000 && <span style={{background:AC,color:WH,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6}}>⭐ Top</span>}
         </div>
 
-        {/* CASHBACK PILL */}
-        <div style={{position:"absolute",top:8,right:8,background:AC,color:WH,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20}}>
-          +{fp(cb)}
-        </div>
+        {/* TOP-RIGHT PILL */}
+        {CASHBACK_LIVE ? (
+          <div style={{position:"absolute",top:8,right:8,background:AC,color:WH,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20}}>
+            +{fp(cb)}
+          </div>
+        ) : (
+          <div style={{position:"absolute",top:8,right:8,background:AC,color:WH,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20}}>
+            ✅ Legit
+          </div>
+        )}
       </div>
 
       {/* BODY */}
@@ -921,10 +1254,12 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
         </div>
 
-        <div style={{display:"flex",gap:6}}>
-          <div style={{flex:1,background:LG,borderRadius:6,padding:"4px 0",fontSize:11,color:GY,textAlign:"center"}}>{p.commRate}% comm</div>
-          <div style={{flex:1,background:AL,borderRadius:6,padding:"4px 0",fontSize:11,color:AC,fontWeight:700,textAlign:"center"}}>+{fp(cb)} cashback</div>
-        </div>
+        {CASHBACK_LIVE && (
+          <div style={{display:"flex",gap:6}}>
+            <div style={{flex:1,background:LG,borderRadius:6,padding:"4px 0",fontSize:11,color:GY,textAlign:"center"}}>{p.commRate}% comm</div>
+            <div style={{flex:1,background:AL,borderRadius:6,padding:"4px 0",fontSize:11,color:AC,fontWeight:700,textAlign:"center"}}>+{fp(cb)} cashback</div>
+          </div>
+        )}
 
         <div style={{fontSize:10,color:"#9CA3AF"}}>{p.sold>=1000?`${(p.sold/1000).toFixed(1)}K`:p.sold} sold</div>
 
@@ -932,7 +1267,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           <button onClick={onShop} style={{flex:1,background:P,color:WH,border:"none",borderRadius:8,padding:"9px 0",cursor:"pointer",fontWeight:700,fontSize:12,transition:"background .15s"}}
             onMouseEnter={e=>e.target.style.background=PD}
             onMouseLeave={e=>e.target.style.background=P}>
-            Shop & Earn
+            {CASHBACK_LIVE ? "Shop & Earn" : "Shop Now"}
           </button>
           <button onClick={onCopy} style={{background:copied?AL:LG,color:copied?AC:GY,border:"none",borderRadius:8,padding:"9px 12px",cursor:"pointer",fontWeight:600,fontSize:12}}>
             {copied?"✓":"Share"}
@@ -943,8 +1278,28 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
   );
 }
 
+// ─── OFFER MINI CARD (admin-sourced links, not in the regular catalog) ───────
+function OfferMiniCard({offer, onShop}) {
+  const cb = getCashback({price:Number(offer.price)||0, commRate:Number(offer.commRate)||0});
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:10,background:WH,border:"1px solid #E5E7EB",borderRadius:10,padding:10,marginBottom:8}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:700,color:DK,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{offer.title}</div>
+        <div style={{display:"flex",gap:6,alignItems:"baseline"}}>
+          {Number(offer.price)>0 && <span style={{fontSize:13,fontWeight:700,color:RD}}>{fp(offer.price)}</span>}
+          {CASHBACK_LIVE && cb>0 && <span style={{fontSize:11,color:AC,fontWeight:700}}>+{fp(cb)} cashback</span>}
+          {!CASHBACK_LIVE && <span style={{fontSize:11,color:AC,fontWeight:700}}>✅ Legit</span>}
+        </div>
+      </div>
+      <button onClick={()=>onShop(offer)} style={{flexShrink:0,background:P,color:WH,border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:12}}>
+        {CASHBACK_LIVE ? "Shop & Earn" : "Shop Now"}
+      </button>
+    </div>
+  );
+}
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
+function Dashboard({user,updateUser,addTransaction,showToast,setPage,handleShopOffer}) {
   const [showW, setShowW] = useState(false);
   const [method, setMethod] = useState("gcash"); // "gcash" | "load"
   const [gcashNum, setGcashNum] = useState(user.gcash||"");
@@ -1023,9 +1378,10 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
           <div style={{fontSize:22}}>🎉</div>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:14,color:DK,marginBottom:3}}>Good news, {user.name.split(" ")[0]}!</div>
-            <div style={{fontSize:13,color:GY,lineHeight:1.6}}>
-              We found a deal for "<strong>{r.text}</strong>"{r.dealNote ? ` — ${r.dealNote}` : ". Check the Deals page!"}
+            <div style={{fontSize:13,color:GY,lineHeight:1.6,marginBottom:r.offers?.length?10:0}}>
+              We found {r.offers?.length>1?"some deals":"a deal"} for "<strong>{r.text}</strong>"{r.dealNote ? ` — ${r.dealNote}` : !r.offers?.length ? ". Check the Deals page!" : ""}
             </div>
+            {r.offers?.map((o,i)=><OfferMiniCard key={i} offer={o} onShop={()=>handleShopOffer(o, r.id)} />)}
           </div>
           <button onClick={()=>dismissRequest(r.id)} style={{background:"none",border:"none",color:GY,cursor:"pointer",fontSize:18,lineHeight:1,padding:4}}>×</button>
         </div>
@@ -1165,14 +1521,23 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage}) {
 
 // ─── HOW IT WORKS ─────────────────────────────────────────────────────────────
 function HowItWorks({setPage}) {
+  const steps = CASHBACK_LIVE
+    ? [["👤","Login with Facebook","One click. We only access your name and photo — nothing else."],["🔍","Browse deals","Find a product you want. Every card shows your exact cashback amount."],["🛒","Shop & Earn","Click the button — you're redirected to Shopee with our tracking link."],["📦","Buy normally","Pay however you like on Shopee. COD, GCash, card — anything works."],["⏳","Tracked automatically","Cashback appears in your ShopSaya wallet as Pending right away."],["💸","Withdraw to GCash","Once you hit ₱100 available, request a payout. Done in 24 hours."]]
+    : [["🤖","Ask or Browse","Type what you're looking for in Ask ShopSaya, or browse our curated deals — no account needed."],["✅","We already checked it","We only feature Preferred Sellers with strong sales history — no random, risky listings."],["🛒","Shop directly on Shopee","Click 'Shop Now' — you're taken straight to the real Shopee listing."],["📦","Buy normally","Checkout on Shopee however you like. COD, GCash, card — anything works."]];
+  const faqs = CASHBACK_LIVE
+    ? [["How much cashback will I get?","About 2–20% of the product price — roughly half of what we earn from Shopee's affiliate commission. The exact amount is shown on every product card."],["When will I receive my cashback?","Cashback moves from Pending to Available within 15–45 days after your order is delivered and confirmed."],["What if my order gets cancelled?","Cancelled or returned orders don't generate any commission for us — so no cashback is paid. Only completed orders count."],["Is my GCash number safe?","Absolutely. We only ask for your GCash number when you request a withdrawal. It's stored encrypted and never shared with anyone."],["Do I need to do anything after buying?","No. Just make sure you click our 'Shop & Earn' button before buying. The rest is automatic."]]
+    : [["Is ShopSaya legit, or is this a scam?","We only list products from Shopee's Preferred Sellers with strong sold counts and ratings — every listing links to the real Shopee page, where you pay and check out directly."],["Do I need to create an account?","No. Browse and use Ask ShopSaya freely — no login, no personal info required."],["How does ShopSaya make money?","We earn a small commission from Shopee when you buy through our links, at no extra cost to you — same price as buying directly."],["What if you don't have what I'm looking for?","Ask ShopSaya logs your request — we'll personally find a legit deal and you can check back for it."],["Is a cashback/rewards program coming?","Yes — we're focused on building a trustworthy deals catalog first. Rewards are planned for the future!"]];
+
   return (
     <div style={{maxWidth:780,margin:"0 auto",padding:"40px 20px"}}>
       <div style={{textAlign:"center",marginBottom:36}}>
         <h2 style={{fontSize:28,fontWeight:800,marginBottom:8,color:DK}}>Paano gumagana ang ShopSaya?</h2>
-        <p style={{fontSize:15,color:GY,lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>"Masaya mag-shop at kumita!" — earn real peso cashback on every Shopee order you make through our links.</p>
+        <p style={{fontSize:15,color:GY,lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>
+          {CASHBACK_LIVE ? `"Masaya mag-shop at kumita!" — earn real peso cashback on every Shopee order you make through our links.` : `"Takot ka bang ma-scam?" — legit deals lang, legit sellers lang. Wala kang account na kailangan, basta i-type lang o i-browse.`}
+        </p>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:32}}>
-        {[["👤","Login with Facebook","One click. We only access your name and photo — nothing else."],["🔍","Browse deals","Find a product you want. Every card shows your exact cashback amount."],["🛒","Shop & Earn","Click the button — you're redirected to Shopee with our tracking link."],["📦","Buy normally","Pay however you like on Shopee. COD, GCash, card — anything works."],["⏳","Tracked automatically","Cashback appears in your ShopSaya wallet as Pending right away."],["💸","Withdraw to GCash","Once you hit ₱100 available, request a payout. Done in 24 hours."]].map(([ic,t,d],i)=>(
+        {steps.map(([ic,t,d],i)=>(
           <div key={i} style={{background:WH,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,.06)",position:"relative"}}>
             <div style={{position:"absolute",top:-10,left:12,width:26,height:26,background:P,color:WH,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12}}>{i+1}</div>
             <div style={{fontSize:30,marginBottom:10,marginTop:6}}>{ic}</div>
@@ -1183,7 +1548,7 @@ function HowItWorks({setPage}) {
       </div>
       <div style={{background:PL,borderRadius:16,padding:24,border:`1px solid ${P}22`}}>
         <div style={{fontWeight:700,fontSize:15,color:P,marginBottom:16}}>Frequently Asked Questions</div>
-        {[["How much cashback will I get?","About 2–20% of the product price — roughly half of what we earn from Shopee's affiliate commission. The exact amount is shown on every product card."],["When will I receive my cashback?","Cashback moves from Pending to Available within 15–45 days after your order is delivered and confirmed."],["What if my order gets cancelled?","Cancelled or returned orders don't generate any commission for us — so no cashback is paid. Only completed orders count."],["Is my GCash number safe?","Absolutely. We only ask for your GCash number when you request a withdrawal. It's stored encrypted and never shared with anyone."],["Do I need to do anything after buying?","No. Just make sure you click our 'Shop & Earn' button before buying. The rest is automatic."]].map(([q,a],i,arr)=>(
+        {faqs.map(([q,a],i,arr)=>(
           <div key={i} style={{marginBottom:i<arr.length-1?16:0,paddingBottom:i<arr.length-1?16:0,borderBottom:i<arr.length-1?`1px solid ${P}22`:"none"}}>
             <div style={{fontWeight:600,fontSize:13,color:DK,marginBottom:4}}>{q}</div>
             <div style={{fontSize:13,color:GY,lineHeight:1.6}}>{a}</div>
@@ -1191,8 +1556,8 @@ function HowItWorks({setPage}) {
         ))}
       </div>
       <div style={{textAlign:"center",marginTop:28}}>
-        <button onClick={()=>setPage("home")} style={{background:P,color:WH,border:"none",borderRadius:24,padding:"13px 32px",cursor:"pointer",fontWeight:700,fontSize:14}}>
-          Mag-ShopSaya na →
+        <button onClick={()=>setPage(CASHBACK_LIVE?"home":"ask")} style={{background:P,color:WH,border:"none",borderRadius:24,padding:"13px 32px",cursor:"pointer",fontWeight:700,fontSize:14}}>
+          {CASHBACK_LIVE ? "Mag-ShopSaya na →" : "Ask ShopSaya →"}
         </button>
       </div>
     </div>
@@ -1202,14 +1567,26 @@ function HowItWorks({setPage}) {
 // ─── LEGAL PAGES ──────────────────────────────────────────────────────────────
 function LegalPage({type, setPage}) {
   const isPrivacy = type==="privacy";
-  const sections = isPrivacy ? [
+
+  const privacyLive = [
     ["Who We Are",`ShopSaya (${SITE_DOMAIN}) is a cashback and deals platform in the Philippines that connects users to Shopee Philippines products through the Shopee Affiliate Program. For privacy concerns: ${SITE_EMAIL}`],
     ["What We Collect","From Facebook Login: your public name and profile photo only. We do NOT collect your email, friends list, or messages. From Withdrawals: your GCash number and account name — collected only when you request a withdrawal, never at signup."],
     ["How We Use It","To create and manage your account, track cashback earnings, process GCash withdrawals, and verify commissions with Shopee. We do not use your data for advertising or share it with third parties."],
     ["Your Rights (RA 10173)","You have the right to access, correct, and delete your data at any time. Email us at "+SITE_EMAIL+" with subject 'Data Privacy Request'. We respond within 15 business days."],
     ["Security","GCash numbers are stored in masked format after your first withdrawal. We use encrypted storage for all personal data."],
     ["Contact NPC","If you believe your privacy rights have been violated, contact the National Privacy Commission at www.privacy.gov.ph or (02) 8234-2228."]
-  ] : [
+  ];
+  const privacyPaused = [
+    ["Who We Are",`ShopSaya (${SITE_DOMAIN}) is a curated Shopee Philippines deals platform, connecting shoppers to vetted products through the Shopee Affiliate Program. For privacy concerns: ${SITE_EMAIL}`],
+    ["What We Collect","No account or login is required to browse ShopSaya. If you use 'Ask ShopSaya' to request a product, we only collect the text you type — no name, email, or contact details are required. We also keep anonymous click counts per product (no personal identifiers attached) purely to see which deals people find useful."],
+    ["How We Use It","To find and curate relevant deals in response to your requests, and to understand which products are most popular so we can feature better deals. We do not sell or share any data with third parties."],
+    ["Your Rights (RA 10173)","Since browsing doesn't require an account, there's generally no personal data tied to you to access or delete. If you included identifying details in a product request and want it removed, email "+SITE_EMAIL+" with subject 'Data Privacy Request' and we'll remove it within 15 business days."],
+    ["Security","All data is stored using encrypted, access-controlled infrastructure (Firebase/Google Cloud)."],
+    ["Contact NPC","If you believe your privacy rights have been violated, contact the National Privacy Commission at www.privacy.gov.ph or (02) 8234-2228."],
+    ["Future Features","We plan to introduce an optional cashback rewards program in the future. This policy will be updated and re-presented to users before any account-based or rewards features launch."]
+  ];
+
+  const termsLive = [
     ["About ShopSaya",`ShopSaya is a cashback affiliate platform. We earn commission from Shopee when you buy through our links and share half with you as cashback. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
     ["Eligibility","Must be 18+, a Philippine resident, with a valid Facebook account and GCash. One account per person. Multiple accounts will result in permanent ban and forfeiture of all cashback."],
     ["How Cashback Works","Earned when you click our link and complete a Shopee purchase. Cancelled or returned orders get no cashback. Cashback amounts shown are estimates and may change."],
@@ -1218,6 +1595,18 @@ function LegalPage({type, setPage}) {
     ["Limitation of Liability","ShopSaya is not responsible for product quality, delivery, or Shopee disputes. Contact Shopee directly for order issues. Our maximum liability is your current wallet balance."],
     ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
   ];
+  const termsPaused = [
+    ["About ShopSaya",`ShopSaya is a curated deals platform. We earn a small commission from Shopee when you purchase through our links — at no extra cost to you, same price as buying directly. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
+    ["Eligibility","Open to everyone — no account, signup, or login required to browse deals or use Ask ShopSaya."],
+    ["How Purchases Work","All payments and checkout happen entirely on Shopee's platform. ShopSaya never collects, processes, or stores any payment information — we simply link you to the real Shopee listing."],
+    ["Ask ShopSaya Requests","Submitting a product request is free and optional. We do our best to find a relevant, legitimately-sold option but cannot guarantee a match for every request, or any specific timeframe."],
+    ["Prohibited","Spamming Ask ShopSaya with abusive, illegal, or unrelated content; scraping or republishing site content without permission; any attempt to disrupt the site."],
+    ["Limitation of Liability","ShopSaya is not responsible for product quality, delivery, pricing changes, or any disputes arising from a Shopee purchase — these are between you and Shopee/the seller. We make a good-faith effort to feature reputable sellers but cannot guarantee any individual transaction."],
+    ["Future Features","An optional cashback rewards program is planned for the future. These Terms will be updated before that launches."],
+    ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
+  ];
+
+  const sections = isPrivacy ? (CASHBACK_LIVE ? privacyLive : privacyPaused) : (CASHBACK_LIVE ? termsLive : termsPaused);
 
   return (
     <div style={{maxWidth:720,margin:"0 auto",padding:"32px 20px"}}>
