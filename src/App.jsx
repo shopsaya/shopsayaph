@@ -760,60 +760,73 @@ function AdminPage({user, showToast, products}) {
         </div>
       )}
 
-      <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Seller Submissions ({submissions.length})</div>
-      {submissions.length===0 && <div style={{color:GY,fontSize:13,marginBottom:28}}>Walang pending submissions.</div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(380px, 1fr))",gap:12,marginBottom:28}}>
-      {submissions.map(sub => (
-        <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",gap:14}}>
-          {sub.image ? <img src={sub.image} alt="" style={{width:70,height:70,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:70,height:70,borderRadius:8,background:LG,flexShrink:0}}/>}
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
-            <div style={{fontSize:12,color:GY,marginBottom:8}}>Seller: {sub.sellerName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-              <input placeholder="Price ₱" type="number" defaultValue={sub.price || ""} onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-              <input placeholder="Commission %" type="number" defaultValue={sub.commRate || 2} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:110,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-              <input placeholder="Discount % (optional)" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:140,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-              <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}>
-                <option value="" disabled>Category</option>
-                {CATEGORIES.filter(c=>c!=="All").map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+      <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+
+        {/* COLUMN 1: SELLER SUBMISSIONS */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Seller Submissions ({submissions.length})</div>
+          {submissions.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending submissions.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {submissions.map(sub => (
+            <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",gap:14}}>
+              {sub.image ? <img src={sub.image} alt="" style={{width:60,height:60,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:60,height:60,borderRadius:8,background:LG,flexShrink:0}}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
+                <div style={{fontSize:12,color:GY,marginBottom:8}}>Seller: {sub.sellerName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                  <input placeholder="Price ₱" type="number" defaultValue={sub.price || ""} onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:75,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <input placeholder="Comm %" type="number" defaultValue={sub.commRate || 2} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:75,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <input placeholder="Discount %" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:85,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}>
+                    <option value="" disabled>Category</option>
+                    {CATEGORIES.filter(c=>c!=="All").map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>approveSubmission(sub)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:11,cursor:"pointer"}}>Approve & Publish</button>
+                  <button onClick={()=>rejectSubmission(sub.id)} style={{background:"none",color:GY,border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 14px",fontWeight:600,fontSize:11,cursor:"pointer"}}>Reject</button>
+                </div>
+              </div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>approveSubmission(sub)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Approve & Publish</button>
-              <button onClick={()=>rejectSubmission(sub.id)} style={{background:"none",color:GY,border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 16px",fontWeight:600,fontSize:12,cursor:"pointer"}}>Reject</button>
-            </div>
+          ))}
           </div>
         </div>
-      ))}
-      </div>
 
-      <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Product Requests ({requests.length})</div>
-      {requests.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending requests.</div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:12}}>
-      {requests.map(req => (
-        <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>"{req.text}"</div>
-          <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
-          <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
-          <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
-        </div>
-      ))}
-      </div>
-
-      <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Cashback Claims ({clicks.length})</div>
-      <div style={{fontSize:12,color:GY,marginBottom:14}}>I-credit lang kung verified mo na talagang nag-checkout ang user sa Shopee.</div>
-      {clicks.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending claims.</div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(360px, 1fr))",gap:12}}>
-      {clicks.map(click => (
-        <div key={click.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",alignItems:"center",gap:14}}>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{click.userName}</div>
-            <div style={{fontSize:12,color:GY}}>Clicked: {click.productTitle} · Suggested: ₱{click.potentialCashback}</div>
+        {/* COLUMN 2: PRODUCT REQUESTS */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Product Requests ({requests.length})</div>
+          {requests.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending requests.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {requests.map(req => (
+            <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>"{req.text}"</div>
+              <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
+              <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
+              <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
+            </div>
+          ))}
           </div>
-          <input type="number" defaultValue={click.potentialCashback} onChange={e=>setCreditAmts(prev=>({...prev,[click.id]:e.target.value}))} style={{width:90,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
-          <button onClick={()=>creditCashback(click)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Credit Cashback</button>
         </div>
-      ))}
+
+        {/* COLUMN 3: CASHBACK CLAIMS */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Pending Cashback Claims ({clicks.length})</div>
+          <div style={{fontSize:12,color:GY,marginBottom:12}}>I-credit lang kung verified mo na talagang nag-checkout ang user sa Shopee.</div>
+          {clicks.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending claims.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {clicks.map(click => (
+            <div key={click.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{click.userName}</div>
+              <div style={{fontSize:12,color:GY,marginBottom:10}}>Clicked: {click.productTitle} · Suggested: ₱{click.potentialCashback}</div>
+              <div style={{display:"flex",gap:8}}>
+                <input type="number" defaultValue={click.potentialCashback} onChange={e=>setCreditAmts(prev=>({...prev,[click.id]:e.target.value}))} style={{width:80,padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12}}/>
+                <button onClick={()=>creditCashback(click)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Credit Cashback</button>
+              </div>
+            </div>
+          ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );
