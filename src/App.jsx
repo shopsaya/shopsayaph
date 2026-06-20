@@ -919,6 +919,8 @@ function AdminPage({user, setShowLogin, showToast, products}) {
   const [dealNotes, setDealNotes] = useState({});
   const [offerDrafts, setOfferDrafts] = useState({});
   const [creditAmts, setCreditAmts] = useState({});
+  const [bulkJson, setBulkJson] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const isAdmin = user && user.id === ADMIN_UID;
 
@@ -982,8 +984,6 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     }
   };
 
-  const [bulkJson, setBulkJson] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
   const bulkAddProducts = async () => {
     let arr;
     try {
