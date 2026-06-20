@@ -58,7 +58,21 @@ const computeWallet = txs => {
   const available = txs.filter(t=>t.type==="cashback" && t.status==="available").reduce((a,t)=>a+(Number(t.amount)||0),0)
                    + txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+(Number(t.amount)||0),0);
   const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+(Number(t.amount)||0),0);
-  const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
+  // Windowed pagination — shows first/last page plus a few around the current
+// one, with "..." for gaps, instead of every single page number.
+const getPageNumbers = (current, total) => {
+  if (total <= 7) return Array.from({length:total}, (_,i)=>i+1);
+  const pages = [1];
+  const start = Math.max(2, current-2);
+  const end = Math.min(total-1, current+2);
+  if (start > 2) pages.push("...");
+  for (let i=start;i<=end;i++) pages.push(i);
+  if (end < total-1) pages.push("...");
+  pages.push(total);
+  return pages;
+};
+
+const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
   return { pending, available, totalEarned, withdrawn };
 };
 
@@ -103,7 +117,7 @@ const SEED_PRODUCTS = [
   {id:"99912345632",title:"Cosrx Advanced Snail 96 Mucin Power Essence 100ml",image:"https://down-ws-ph.img.susercontent.com/ph-11134207-7r98o-cosrx.webp",price:899,sold:3200,commRate:18,discount:10,category:"Health & Beauty",affiliateLink:"https://s.shopee.ph/8pjQ3hLRC7"},
 ];
 
-const CATEGORIES = ["All","Electronics","Music","Stationery","Home & Living","Health & Beauty","Fashion","Grocery","Gadgets"];
+const CATEGORIES = ["All","Electronics","Music","Stationery","Home & Living","Health & Beauty","Fashion","Grocery","Baby","Pet Supplies","Toys","Gadgets"];
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function useAuth() {
@@ -191,6 +205,31 @@ export default function App() {
   const [prodPage, setProdPage] = useState(1);
   const goHome = () => { setSearch(""); setCat("All"); setSort("commission"); setProdPage(1); setPage("home"); };
   const [toast, setToast] = useState(null);
+  const [installEvent, setInstallEvent] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+
+  useEffect(() => {
+    if (isStandalone || localStorage.getItem("ss_install_dismissed")) return;
+    const onPrompt = (e) => { e.preventDefault(); setInstallEvent(e); setShowInstallBanner(true); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    if (isIOS) setShowInstallBanner(true); // iOS never fires beforeinstallprompt — show our own instructions instead
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+
+  const dismissInstallBanner = () => { setShowInstallBanner(false); localStorage.setItem("ss_install_dismissed", "1"); };
+  const handleInstallClick = async () => {
+    if (installEvent) {
+      installEvent.prompt();
+      const { outcome } = await installEvent.userChoice;
+      if (outcome === "accepted") showToast("Naidagdag sa Home Screen! 🎉");
+      setShowInstallBanner(false);
+      localStorage.setItem("ss_install_dismissed", "1");
+    } else if (isIOS) {
+      showToast("Tap ang Share icon ⬆️ sa Safari, tapos 'Add to Home Screen'", "success");
+    }
+  };
   const [copied, setCopied] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
   const [products, setProducts] = useState([]);
@@ -312,7 +351,7 @@ export default function App() {
       <header style={{background:WH,borderBottom:"1px solid #E5E7EB",position:"sticky",top:0,zIndex:200,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
         <div style={{maxWidth:1200,margin:"0 auto",padding:"0 20px",height:72,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
           <div onClick={goHome} style={{display:"flex",alignItems:"center",gap:11,cursor:"pointer",flexShrink:0}}>
-            <div style={{width:46,height:46,borderRadius:14,background:`linear-gradient(135deg, ${P} 0%, ${PD} 100%)`,boxShadow:`0 4px 12px ${P}55`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:17,letterSpacing:.5}}>SS</div>
+            <ShieldLogo size={46}/>
             <div>
               <div style={{fontWeight:800,fontSize:21,color:P,lineHeight:1}}>ShopSaya</div>
               <div style={{fontSize:10,color:GY,lineHeight:1,marginTop:2}}>Masaya mag-shop at kumita!</div>
@@ -350,6 +389,20 @@ export default function App() {
         </div>
       </header>
 
+      {/* ADD TO HOME SCREEN BANNER */}
+      {showInstallBanner && (
+        <div style={{background:`linear-gradient(135deg, ${P} 0%, ${PD} 100%)`,color:WH,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+          <ShieldLogo size={28}/>
+          <span style={{fontSize:13,fontWeight:600}}>
+            {isIOS ? "I-add ang ShopSaya sa Home Screen mo para mas mabilis bumalik!" : "I-install ang ShopSaya bilang app sa phone mo — libre, walang download sa Play Store!"}
+          </span>
+          <button onClick={handleInstallClick} style={{background:WH,color:P,border:"none",borderRadius:20,padding:"6px 16px",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>
+            {isIOS ? "Paano? 👆" : "📲 I-add sa Home Screen"}
+          </button>
+          <button onClick={dismissInstallBanner} style={{background:"none",border:"none",color:"rgba(255,255,255,.8)",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 4px",flexShrink:0}}>×</button>
+        </div>
+      )}
+
       {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
       {page==="dashboard" && CASHBACK_LIVE && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} goHome={goHome} handleShopOffer={handleShopOffer} />}
       {page==="howto" && <HowItWorks setPage={setPage} goHome={goHome} />}
@@ -369,7 +422,7 @@ export default function App() {
 
       <footer style={{background:DK,color:"#9CA3AF",textAlign:"center",padding:"28px 20px",fontSize:12,marginTop:48}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:6}}>
-          <div style={{width:24,height:24,borderRadius:6,background:P,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:12}}>P</div>
+          <ShieldLogo size={24}/>
           <strong style={{color:WH,fontSize:14}}>ShopSaya PH</strong>
           <span style={{color:"#4B5563"}}>·</span>
           <span>{SITE_DOMAIN}</span>
@@ -387,12 +440,28 @@ export default function App() {
 }
 
 // ─── LOGIN MODAL ──────────────────────────────────────────────────────────────
+// ─── SHIELD LOGO (brand mark — used in header, footer, login modal) ─────────
+function ShieldLogo({size=46}) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" style={{flexShrink:0,filter:`drop-shadow(0 3px 8px ${P}66)`}}>
+      <defs>
+        <linearGradient id={`shieldGrad-${size}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={P}/>
+          <stop offset="100%" stopColor={PD}/>
+        </linearGradient>
+      </defs>
+      <path d="M256 22 L446 96 V250 C446 372 366 440 256 492 C146 440 66 372 66 250 V96 Z" fill={`url(#shieldGrad-${size})`} stroke="#FFFFFF" strokeWidth="14" strokeLinejoin="round"/>
+      <text x="256" y="305" fontFamily="Arial, Helvetica, sans-serif" fontSize="168" fontWeight="900" fill="#FFFFFF" textAnchor="middle" letterSpacing="-2">SS</text>
+    </svg>
+  );
+}
+
 function LoginModal({onLogin, onClose}) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
       <div style={{background:WH,borderRadius:20,padding:32,maxWidth:380,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-          <div style={{width:40,height:40,borderRadius:12,background:P,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:13}}>SS</div>
+          <ShieldLogo size={40}/>
           <div>
             <div style={{fontWeight:800,fontSize:18,color:DK}}>{CASHBACK_LIVE ? "Sumali sa ShopSaya" : "ShopSaya Admin"}</div>
             <div style={{fontSize:12,color:GY}}>{CASHBACK_LIVE ? "Masaya mag-shop at kumita! 😊" : "Login para sa pamamahala ng site."}</div>
@@ -578,10 +647,14 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
         {totalPages>1 && (
           <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:6,marginTop:28,flexWrap:"wrap"}}>
             <button onClick={()=>setProdPage(p=>Math.max(1,p-1))} disabled={prodPage===1} style={{padding:"7px 14px",border:`1.5px solid ${prodPage===1?"#E5E7EB":P}`,borderRadius:8,cursor:prodPage===1?"default":"pointer",background:WH,color:prodPage===1?"#D1D5DB":P,fontWeight:600,fontSize:13}}>‹ Prev</button>
-            {Array.from({length:totalPages},(_,i)=>(
-              <button key={i} onClick={()=>setProdPage(i+1)} style={{width:34,height:34,border:`1.5px solid ${prodPage===i+1?P:"#E5E7EB"}`,borderRadius:8,cursor:"pointer",background:prodPage===i+1?P:WH,color:prodPage===i+1?WH:DK,fontWeight:prodPage===i+1?700:400,fontSize:13}}>
-                {i+1}
-              </button>
+            {getPageNumbers(prodPage, totalPages).map((p,i)=>(
+              p==="..." ? (
+                <span key={`e${i}`} style={{padding:"0 4px",color:"#9CA3AF",fontSize:13}}>···</span>
+              ) : (
+                <button key={p} onClick={()=>setProdPage(p)} style={{width:34,height:34,border:`1.5px solid ${prodPage===p?P:"#E5E7EB"}`,borderRadius:8,cursor:"pointer",background:prodPage===p?P:WH,color:prodPage===p?WH:DK,fontWeight:prodPage===p?700:400,fontSize:13}}>
+                  {p}
+                </button>
+              )
             ))}
             <button onClick={()=>setProdPage(p=>Math.min(totalPages,p+1))} disabled={prodPage===totalPages} style={{padding:"7px 14px",border:`1.5px solid ${prodPage===totalPages?"#E5E7EB":P}`,borderRadius:8,cursor:prodPage===totalPages?"default":"pointer",background:WH,color:prodPage===totalPages?"#D1D5DB":P,fontWeight:600,fontSize:13}}>Next ›</button>
           </div>
@@ -625,7 +698,7 @@ function RequestItem({user, showToast}) {
       <div style={{fontSize:28,marginBottom:8}}>🔍</div>
       <div style={{fontWeight:800,fontSize:17,color:DK,marginBottom:6}}>Hindi mo nakita ang hinahanap mo?</div>
       <div style={{fontSize:13,color:GY,marginBottom:18,maxWidth:440,margin:"0 auto 18px"}}>
-        I-drop dito ang product name o Shopee link — at hahanapan ka namin ng magandang deal!
+        I-drop dito ang product name o Shopee link — hahanapan ka namin ng legit na deal at i-post within minutes!
       </div>
       <div style={{display:"flex",gap:10,maxWidth:480,margin:"0 auto",flexWrap:"wrap"}}>
         <input
@@ -838,7 +911,7 @@ function AskShopSaya({user, products, showToast, setShowLogin, handleShop, handl
               <div style={{flex:1,minWidth:0}}>
                 {m.kind==="intro" && (
                   <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,maxWidth:"90%"}}>
-                    Hi! Ako ang ShopSaya AI Deal Finder. Anong product hinahanap mo? (hal. "oven toaster", "wireless earbuds")
+                    Hi! Ako ang ShopSaya AI Deal Finder. Anong product hinahanap mo? (hal. "oven toaster", "wireless earbuds") Kung wala kami nito, hahanapan ka namin ng legit deal — i-post namin within minutes!
                   </div>
                 )}
                 {m.kind==="catalog" && (
@@ -863,7 +936,7 @@ function AskShopSaya({user, products, showToast, setShowLogin, handleShop, handl
                 )}
                 {m.kind==="pending" && (
                   <div style={{background:LG,borderRadius:"2px 14px 14px 14px",padding:"10px 14px",fontSize:13,color:DK,maxWidth:"90%"}}>
-                    Wala pa kasi kami nito ngayon, pero hahanapan ka namin ng legit na deal! I-check mo lang ulit dito sa loob ng ilang oras.
+                    Wala pa kasi kami nito ngayon, pero hahanapan ka namin ng legit na deal! I-check mo lang ulit dito sa loob ng ilang minuto.
                   </div>
                 )}
                 {m.kind==="fulfilled" && (
@@ -1296,7 +1369,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
   const cb = getCashback(p);
   const orig = p.discount ? Math.round(p.price/(1-p.discount/100)) : null;
   const [imgOk, setImgOk] = useState(!!p.image);
-  const icons = {Music:"🎸",Electronics:"📱",Fashion:"👗","Health & Beauty":"💄",Sports:"⚽",Toys:"🧸",Stationery:"✏️","Home & Living":"🏠",Gadgets:"🔧",Grocery:"🛒"};
+  const icons = {Music:"🎸",Electronics:"📱",Fashion:"👗","Health & Beauty":"💄",Sports:"⚽",Toys:"🧸",Stationery:"✏️","Home & Living":"🏠",Gadgets:"🔧",Grocery:"🛒",Baby:"🍼","Pet Supplies":"🐾"};
 
   return (
     <div style={{background:WH,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.07)",display:"flex",flexDirection:"column",transition:"transform .15s,box-shadow .15s"}}
@@ -1606,10 +1679,10 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage,goHome,hand
 function HowItWorks({setPage, goHome}) {
   const steps = CASHBACK_LIVE
     ? [["👤","Login with Facebook","One click. We only access your name and photo — nothing else."],["🔍","Browse deals","Find a product you want. Every card shows your exact cashback amount."],["🛒","Shop & Earn","Click the button — you're redirected to Shopee with our tracking link."],["📦","Buy normally","Pay however you like on Shopee. COD, GCash, card — anything works."],["⏳","Tracked automatically","Cashback appears in your ShopSaya wallet as Pending right away."],["💸","Withdraw to GCash","Once you hit ₱100 available, request a payout. Done in 24 hours."]]
-    : [["🤖","Ask or Browse","Type what you're looking for in Ask ShopSaya, or browse our curated deals — no account needed."],["✅","We already checked it","We only feature Preferred Sellers with strong sales history — no random, risky listings."],["🛒","Shop directly on Shopee","Click 'Shop Now' — you're taken straight to the real Shopee listing."],["📦","Buy normally","Checkout on Shopee however you like. COD, GCash, card — anything works."]];
+    : [["🤖","Ask ShopSaya anything","I-type ang product na hinahanap mo sa Ask ShopSaya — kahit hindi pa nakikita sa site namin, o mag-browse sa curated deals."],["⚡","May match agad?","Kung meron sa catalog namin, makikita mo agad ang legit options — instant, walang hintay."],["🔍","Walang match? Magpa-request ka","Hahanapan ka namin ng totoong legit deal mula sa mga Preferred Sellers sa Shopee — at i-post namin within minutes, hindi araw-araw na hintay."],["🛒","Shop directly on Shopee","Click 'Shop Now' — diretso ka sa totoong Shopee listing. Bayad at checkout gaya ng dati, walang account na kailangan."]];
   const faqs = CASHBACK_LIVE
     ? [["How much cashback will I get?","About 2–20% of the product price — roughly half of what we earn from Shopee's affiliate commission. The exact amount is shown on every product card."],["When will I receive my cashback?","Cashback moves from Pending to Available within 15–45 days after your order is delivered and confirmed."],["What if my order gets cancelled?","Cancelled or returned orders don't generate any commission for us — so no cashback is paid. Only completed orders count."],["Is my GCash number safe?","Absolutely. We only ask for your GCash number when you request a withdrawal. It's stored encrypted and never shared with anyone."],["Do I need to do anything after buying?","No. Just make sure you click our 'Shop & Earn' button before buying. The rest is automatic."]]
-    : [["Is ShopSaya legit, or is this a scam?","We only list products from Shopee's Preferred Sellers with strong sold counts and ratings — every listing links to the real Shopee page, where you pay and check out directly."],["Do I need to create an account?","No. Browse and use Ask ShopSaya freely — no login, no personal info required."],["How does ShopSaya make money?","We earn a small commission from Shopee when you buy through our links, at no extra cost to you — same price as buying directly."],["What if you don't have what I'm looking for?","Ask ShopSaya logs your request — we'll personally find a legit deal and you can check back for it."],["Is a cashback/rewards program coming?","Yes — we're focused on building a trustworthy deals catalog first. Rewards are planned for the future!"]];
+    : [["Is ShopSaya legit, or is this a scam?","We only list products from Shopee's Preferred Sellers with strong sold counts and ratings — every listing links to the real Shopee page, where you pay and check out directly."],["Do I need to create an account?","No. Browse and use Ask ShopSaya freely — no login, no personal info required."],["How does ShopSaya make money?","We earn a small commission from Shopee when you buy through our links, at no extra cost to you — same price as buying directly."],["What if you don't have what I'm looking for?","I-type lang sa Ask ShopSaya o i-drop sa request box ang product name o Shopee link — hahanapan ka namin ng legit na deal at i-post namin ito within minutes, hindi kailangan maghintay ng buong araw."],["Is a cashback/rewards program coming?","Yes — we're focused on building a trustworthy deals catalog first. Rewards are planned for the future!"]];
 
   return (
     <div style={{maxWidth:780,margin:"0 auto",padding:"40px 20px"}}>
