@@ -750,7 +750,7 @@ function AdminPage({user, showToast, products}) {
   };
 
   return (
-    <div style={{maxWidth:840,margin:"0 auto",padding:"32px 16px"}}>
+    <div style={{maxWidth:1280,margin:"0 auto",padding:"32px 16px"}}>
       <div style={{fontWeight:800,fontSize:22,marginBottom:20}}>Admin</div>
 
       {products.length === 0 && (
@@ -762,8 +762,9 @@ function AdminPage({user, showToast, products}) {
 
       <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Seller Submissions ({submissions.length})</div>
       {submissions.length===0 && <div style={{color:GY,fontSize:13,marginBottom:28}}>Walang pending submissions.</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(380px, 1fr))",gap:12,marginBottom:28}}>
       {submissions.map(sub => (
-        <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12,display:"flex",gap:14}}>
+        <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",gap:14}}>
           {sub.image ? <img src={sub.image} alt="" style={{width:70,height:70,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:70,height:70,borderRadius:8,background:LG,flexShrink:0}}/>}
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
@@ -784,23 +785,27 @@ function AdminPage({user, showToast, products}) {
           </div>
         </div>
       ))}
+      </div>
 
       <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Product Requests ({requests.length})</div>
       {requests.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending requests.</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:12}}>
       {requests.map(req => (
-        <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12}}>
+        <div key={req.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16}}>
           <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>"{req.text}"</div>
           <div style={{fontSize:12,color:GY,marginBottom:10}}>From: {req.userName || "Guest"}</div>
           <input placeholder="Optional note (e.g. 'check Electronics category')" onChange={e=>setDealNotes(prev=>({...prev,[req.id]:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
           <button onClick={()=>fulfillRequest(req.id)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Mark Fulfilled</button>
         </div>
       ))}
+      </div>
 
       <div style={{fontWeight:700,fontSize:16,margin:"28px 0 12px"}}>Pending Cashback Claims ({clicks.length})</div>
       <div style={{fontSize:12,color:GY,marginBottom:14}}>I-credit lang kung verified mo na talagang nag-checkout ang user sa Shopee.</div>
       {clicks.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending claims.</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(360px, 1fr))",gap:12}}>
       {clicks.map(click => (
-        <div key={click.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
+        <div key={click.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",alignItems:"center",gap:14}}>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{click.userName}</div>
             <div style={{fontSize:12,color:GY}}>Clicked: {click.productTitle} · Suggested: ₱{click.potentialCashback}</div>
@@ -809,6 +814,7 @@ function AdminPage({user, showToast, products}) {
           <button onClick={()=>creditCashback(click)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 16px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Credit Cashback</button>
         </div>
       ))}
+      </div>
     </div>
   );
 }
