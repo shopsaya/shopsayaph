@@ -189,6 +189,7 @@ export default function App() {
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("commission");
   const [prodPage, setProdPage] = useState(1);
+  const goHome = () => { setSearch(""); setCat("All"); setSort("commission"); setProdPage(1); setPage("home"); };
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -309,26 +310,26 @@ export default function App() {
     <div style={{fontFamily:"'Segoe UI',system-ui,sans-serif",minHeight:"100vh",background:LG,color:DK}}>
       {/* HEADER */}
       <header style={{background:WH,borderBottom:"1px solid #E5E7EB",position:"sticky",top:0,zIndex:200,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",padding:"0 20px",height:60,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-          <div onClick={()=>setPage("home")} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flexShrink:0}}>
-            <div style={{width:34,height:34,borderRadius:10,background:P,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:13}}>SS</div>
+        <div style={{maxWidth:1200,margin:"0 auto",padding:"0 20px",height:72,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div onClick={goHome} style={{display:"flex",alignItems:"center",gap:11,cursor:"pointer",flexShrink:0}}>
+            <div style={{width:46,height:46,borderRadius:14,background:`linear-gradient(135deg, ${P} 0%, ${PD} 100%)`,boxShadow:`0 4px 12px ${P}55`,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:900,fontSize:17,letterSpacing:.5}}>SS</div>
             <div>
-              <div style={{fontWeight:800,fontSize:18,color:P,lineHeight:1}}>ShopSaya</div>
-              <div style={{fontSize:9,color:GY,lineHeight:1,marginTop:1}}>Masaya mag-shop at kumita!</div>
+              <div style={{fontWeight:800,fontSize:21,color:P,lineHeight:1}}>ShopSaya</div>
+              <div style={{fontSize:10,color:GY,lineHeight:1,marginTop:2}}>Masaya mag-shop at kumita!</div>
             </div>
           </div>
 
-          <nav style={{display:"flex",alignItems:"center",gap:6}}>
+          <nav style={{display:"flex",alignItems:"center",gap:8}}>
             {[["home","Deals"],["howto","How It Works"]].map(([id,label])=>(
-              <button key={id} onClick={()=>setPage(id)} style={{background:page===id?PL:"none",color:page===id?P:GY,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:page===id?700:400}}>
+              <button key={id} onClick={()=>id==="home"?goHome():setPage(id)} style={{background:page===id?PL:"none",color:page===id?P:GY,border:"none",borderRadius:8,padding:"7px 13px",cursor:"pointer",fontSize:14,fontWeight:page===id?700:500}}>
                 {label}
               </button>
             ))}
-            <button onClick={()=>setPage("ask")} style={{background:page==="ask"?P:PL,color:page==="ask"?WH:P,border:"none",borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
-              🤖 Ask ShopSaya
+            <button onClick={()=>setPage("ask")} style={{background:page==="ask"?`linear-gradient(135deg, ${P} 0%, ${PD} 100%)`:PL,color:page==="ask"?WH:P,border:"none",borderRadius:22,padding:"8px 18px 8px 14px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:7,boxShadow:page==="ask"?`0 3px 10px ${P}55`:"none"}}>
+              <span style={{fontSize:18,lineHeight:1}}>🤖</span> Ask ShopSaya
             </button>
-            <button onClick={()=>setPage("sell")} style={{background:page==="sell"?AC:AL,color:page==="sell"?WH:AC,border:`1.5px solid ${AC}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
-              🏪 Seller ka?
+            <button onClick={()=>setPage("sell")} style={{background:page==="sell"?AC:AL,color:page==="sell"?WH:AC,border:`1.5px solid ${AC}`,borderRadius:22,padding:"8px 18px 8px 14px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:7}}>
+              <span style={{fontSize:18,lineHeight:1}}>🏪</span> Seller ka?
             </button>
             {CASHBACK_LIVE && (user ? (
               <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -350,10 +351,10 @@ export default function App() {
       </header>
 
       {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
-      {page==="dashboard" && CASHBACK_LIVE && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} handleShopOffer={handleShopOffer} />}
-      {page==="howto" && <HowItWorks setPage={setPage} />}
-      {page==="privacy" && <LegalPage type="privacy" setPage={setPage} />}
-      {page==="terms" && <LegalPage type="terms" setPage={setPage} />}
+      {page==="dashboard" && CASHBACK_LIVE && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} goHome={goHome} handleShopOffer={handleShopOffer} />}
+      {page==="howto" && <HowItWorks setPage={setPage} goHome={goHome} />}
+      {page==="privacy" && <LegalPage type="privacy" setPage={setPage} goHome={goHome} />}
+      {page==="terms" && <LegalPage type="terms" setPage={setPage} goHome={goHome} />}
       {page==="sell" && <SellerPage showToast={showToast} />}
       {page==="ask" && <AskShopSaya user={user} products={products} showToast={showToast} setShowLogin={setShowLogin} handleShop={handleShop} handleShopOffer={handleShopOffer} setPage={setPage} />}
       {page==="admin" && <AdminPage user={user} setShowLogin={setShowLogin} showToast={showToast} products={products} />}
@@ -373,7 +374,7 @@ export default function App() {
           <span style={{color:"#4B5563"}}>·</span>
           <span>{SITE_DOMAIN}</span>
         </div>
-        <div style={{marginBottom:10,color:"#6B7280"}}>ShopSaya PH — Masaya mag-shop at kumita! · Shopee Affiliate: {AFFILIATE_ID}</div>
+        <div style={{marginBottom:10,color:"#6B7280"}}>ShopSaya PH — Masaya mag-shop at kumita!</div>
         <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap",marginBottom:12}}>
           {[["privacy","Privacy Policy"],["terms","Terms of Service"],["howto","How It Works"],["sell","Mga Seller"]].map(([pg,label])=>(
             <button key={pg} onClick={()=>setPage(pg)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:12,textDecoration:"underline"}}>{label}</button>
@@ -1381,7 +1382,7 @@ function OfferMiniCard({offer, onShop}) {
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({user,updateUser,addTransaction,showToast,setPage,handleShopOffer}) {
+function Dashboard({user,updateUser,addTransaction,showToast,setPage,goHome,handleShopOffer}) {
   const [showW, setShowW] = useState(false);
   const [method, setMethod] = useState("gcash"); // "gcash" | "load"
   const [gcashNum, setGcashNum] = useState(user.gcash||"");
@@ -1575,7 +1576,7 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage,handleShopO
             <div style={{fontSize:36,marginBottom:8}}>🛍️</div>
             <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>No transactions yet</div>
             <div style={{fontSize:12,marginBottom:14}}>Mag-ShopSaya na para kumita!</div>
-            <button onClick={()=>setPage("home")} style={{background:P,color:WH,border:"none",borderRadius:20,padding:"8px 20px",cursor:"pointer",fontWeight:600,fontSize:13}}>Tingnan ang Deals</button>
+            <button onClick={goHome} style={{background:P,color:WH,border:"none",borderRadius:20,padding:"8px 20px",cursor:"pointer",fontWeight:600,fontSize:13}}>Tingnan ang Deals</button>
           </div>
         ) : txs.map(tx=>(
           <div key={tx.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #F3F4F6"}}>
@@ -1602,7 +1603,7 @@ function Dashboard({user,updateUser,addTransaction,showToast,setPage,handleShopO
 }
 
 // ─── HOW IT WORKS ─────────────────────────────────────────────────────────────
-function HowItWorks({setPage}) {
+function HowItWorks({setPage, goHome}) {
   const steps = CASHBACK_LIVE
     ? [["👤","Login with Facebook","One click. We only access your name and photo — nothing else."],["🔍","Browse deals","Find a product you want. Every card shows your exact cashback amount."],["🛒","Shop & Earn","Click the button — you're redirected to Shopee with our tracking link."],["📦","Buy normally","Pay however you like on Shopee. COD, GCash, card — anything works."],["⏳","Tracked automatically","Cashback appears in your ShopSaya wallet as Pending right away."],["💸","Withdraw to GCash","Once you hit ₱100 available, request a payout. Done in 24 hours."]]
     : [["🤖","Ask or Browse","Type what you're looking for in Ask ShopSaya, or browse our curated deals — no account needed."],["✅","We already checked it","We only feature Preferred Sellers with strong sales history — no random, risky listings."],["🛒","Shop directly on Shopee","Click 'Shop Now' — you're taken straight to the real Shopee listing."],["📦","Buy normally","Checkout on Shopee however you like. COD, GCash, card — anything works."]];
@@ -1638,7 +1639,7 @@ function HowItWorks({setPage}) {
         ))}
       </div>
       <div style={{textAlign:"center",marginTop:28}}>
-        <button onClick={()=>setPage(CASHBACK_LIVE?"home":"ask")} style={{background:P,color:WH,border:"none",borderRadius:24,padding:"13px 32px",cursor:"pointer",fontWeight:700,fontSize:14}}>
+        <button onClick={()=>CASHBACK_LIVE?goHome():setPage("ask")} style={{background:P,color:WH,border:"none",borderRadius:24,padding:"13px 32px",cursor:"pointer",fontWeight:700,fontSize:14}}>
           {CASHBACK_LIVE ? "Mag-ShopSaya na →" : "Ask ShopSaya →"}
         </button>
       </div>
@@ -1647,7 +1648,7 @@ function HowItWorks({setPage}) {
 }
 
 // ─── LEGAL PAGES ──────────────────────────────────────────────────────────────
-function LegalPage({type, setPage}) {
+function LegalPage({type, setPage, goHome}) {
   const isPrivacy = type==="privacy";
 
   const privacyLive = [
@@ -1692,7 +1693,7 @@ function LegalPage({type, setPage}) {
 
   return (
     <div style={{maxWidth:720,margin:"0 auto",padding:"32px 20px"}}>
-      <button onClick={()=>setPage("home")} style={{background:"none",border:"1px solid #E5E7EB",borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,color:GY,marginBottom:24}}>← Back to Deals</button>
+      <button onClick={goHome} style={{background:"none",border:"1px solid #E5E7EB",borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,color:GY,marginBottom:24}}>← Back to Deals</button>
       <div style={{background:WH,borderRadius:16,padding:32,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
           <div style={{width:40,height:40,borderRadius:12,background:PL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{isPrivacy?"🔒":"📄"}</div>
