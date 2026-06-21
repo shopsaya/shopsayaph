@@ -62,6 +62,16 @@ const computeWallet = txs => {
   return { pending, available, totalEarned, withdrawn };
 };
 
+// Seeded pseudo-random order — stable for the duration of one homepage visit
+// (so products don't jump around while typing a search or paginating), but
+// different each time someone lands on the homepage fresh.
+const seededRand = (seed, id) => {
+  let h = seed;
+  const s = String(id);
+  for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) % 2147483647;
+  return h;
+};
+
 // Windowed pagination — shows first/last page plus a few around the current
 // one, with "..." for gaps, instead of every single page number.
 const getPageNumbers = (current, total) => {
@@ -201,9 +211,10 @@ export default function App() {
   }, []);
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
-  const [sort, setSort] = useState("commission");
+  const [sort, setSort] = useState("shuffle");
   const [prodPage, setProdPage] = useState(1);
-  const goHome = () => { setSearch(""); setCat("All"); setSort("commission"); setProdPage(1); setPage("home"); };
+  const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random()*1e9));
+  const goHome = () => { setSearch(""); setCat("All"); setSort("shuffle"); setProdPage(1); setShuffleSeed(Math.floor(Math.random()*1e9)); setPage("home"); };
   const [toast, setToast] = useState(null);
   const [installEvent, setInstallEvent] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -268,6 +279,7 @@ export default function App() {
     (cat==="All" || p.category===cat) &&
     (!search || p.title.toLowerCase().includes(search.toLowerCase()))
   ).sort((a,b) => {
+    if(sort==="shuffle") return seededRand(shuffleSeed,a.id) - seededRand(shuffleSeed,b.id);
     if(sort==="commission") return b.commRate-a.commRate;
     if(sort==="cashback") return getCashback(b)-getCashback(a);
     if(sort==="sold") return b.sold-a.sold;
@@ -354,7 +366,7 @@ export default function App() {
             <ShieldLogo size={46}/>
             <div>
               <div style={{fontWeight:800,fontSize:21,color:P,lineHeight:1}}>ShopSaya</div>
-              <div style={{fontSize:10,color:GY,lineHeight:1,marginTop:2}}>Masaya mag-shop at kumita!</div>
+              <div style={{fontSize:10,color:GY,lineHeight:1,marginTop:2}}>Shop safely, shop surely!</div>
             </div>
           </div>
 
@@ -427,7 +439,7 @@ export default function App() {
           <span style={{color:"#4B5563"}}>·</span>
           <span>{SITE_DOMAIN}</span>
         </div>
-        <div style={{marginBottom:10,color:"#6B7280"}}>ShopSaya PH — Masaya mag-shop at kumita!</div>
+        <div style={{marginBottom:10,color:"#6B7280"}}>ShopSaya PH — Shop safely, shop surely!</div>
         <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap",marginBottom:12}}>
           {[["privacy","Privacy Policy"],["terms","Terms of Service"],["howto","How It Works"],["sell","Mga Seller"]].map(([pg,label])=>(
             <button key={pg} onClick={()=>setPage(pg)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:12,textDecoration:"underline"}}>{label}</button>
@@ -616,6 +628,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
               ))}
             </div>
             <select value={sort} onChange={e=>setSort(e.target.value)} style={{padding:"6px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,cursor:"pointer",background:WH,color:DK}}>
+              <option value="shuffle">✨ Recommended</option>
               <option value="commission">Highest Commission</option>
               {CASHBACK_LIVE && <option value="cashback">Most Cashback</option>}
               <option value="discount">Biggest Discount</option>
@@ -699,7 +712,7 @@ function RequestItem({user, showToast}) {
       <div style={{fontSize:28,marginBottom:8}}>🔍</div>
       <div style={{fontWeight:800,fontSize:17,color:DK,marginBottom:6}}>Hindi mo nakita ang hinahanap mo?</div>
       <div style={{fontSize:13,color:GY,marginBottom:18,maxWidth:440,margin:"0 auto 18px"}}>
-        I-drop dito ang product name o Shopee link — hahanapan ka namin ng legit na deal at i-post within minutes!
+        I-drop dito ang product name — hahanapan ka namin ng legit na deal at i-post within minutes!
       </div>
       <div style={{display:"flex",gap:10,maxWidth:480,margin:"0 auto",flexWrap:"wrap"}}>
         <input
@@ -1378,7 +1391,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
       onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,.07)"}}>
 
       {/* IMAGE */}
-      <div style={{position:"relative",height:180,background:LG,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+      <div style={{position:"relative",aspectRatio:"4/3",background:LG,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
         {imgOk
           ? <img src={p.image} alt={p.title} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setImgOk(false)}/>
           : <div style={{fontSize:48}}>{icons[p.category]||"📦"}</div>}
@@ -1405,7 +1418,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
       {/* BODY */}
       <div style={{padding:12,flex:1,display:"flex",flexDirection:"column",gap:6}}>
         <div style={{fontSize:10,fontWeight:600,color:P,textTransform:"uppercase",letterSpacing:.5}}>{p.category}</div>
-        <div style={{fontSize:13,color:DK,lineHeight:1.45,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:38}}>{p.title}</div>
+        <div style={{fontSize:13,color:DK,lineHeight:1.45,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:57}}>{p.title}</div>
         <div style={{display:"flex",alignItems:"baseline",gap:6}}>
           <span style={{fontSize:17,fontWeight:800,color:RD}}>{fp(p.price)}</span>
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
