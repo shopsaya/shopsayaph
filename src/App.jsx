@@ -639,11 +639,6 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
           </div>
         </div>
 
-        <div style={{fontSize:13,color:GY,marginBottom:14}}>
-          Showing <strong style={{color:DK}}>{filtered.length}</strong> deals
-          {CASHBACK_LIVE && !user && <span style={{color:P,marginLeft:8,fontSize:12,fontWeight:500}}>→ Mag-login para i-track ang cashback mo</span>}
-        </div>
-
         {/* GRID */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:14}}>
           {paginated.map(p=><ProductCard key={p.id} product={p} onShop={()=>handleShop(p)} onCopy={()=>handleCopy(p)} copied={copied===p.id} user={user} />)}
@@ -1418,7 +1413,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
       {/* BODY */}
       <div style={{padding:12,flex:1,display:"flex",flexDirection:"column",gap:6}}>
         <div style={{fontSize:10,fontWeight:600,color:P,textTransform:"uppercase",letterSpacing:.5}}>{p.category}</div>
-        <div style={{fontSize:13,color:DK,lineHeight:1.45}}>{p.title}</div>
+        <div style={{fontSize:13,color:DK,lineHeight:1.45,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:38}}>{p.title}</div>
         <div style={{display:"flex",alignItems:"baseline",gap:6}}>
           <span style={{fontSize:17,fontWeight:800,color:RD}}>{fp(p.price)}</span>
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
