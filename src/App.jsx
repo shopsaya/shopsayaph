@@ -58,7 +58,11 @@ const computeWallet = txs => {
   const available = txs.filter(t=>t.type==="cashback" && t.status==="available").reduce((a,t)=>a+(Number(t.amount)||0),0)
                    + txs.filter(t=>t.type==="withdrawal").reduce((a,t)=>a+(Number(t.amount)||0),0);
   const totalEarned = txs.filter(t=>t.type==="cashback").reduce((a,t)=>a+(Number(t.amount)||0),0);
-  // Windowed pagination — shows first/last page plus a few around the current
+  const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
+  return { pending, available, totalEarned, withdrawn };
+};
+
+// Windowed pagination — shows first/last page plus a few around the current
 // one, with "..." for gaps, instead of every single page number.
 const getPageNumbers = (current, total) => {
   if (total <= 7) return Array.from({length:total}, (_,i)=>i+1);
@@ -70,10 +74,6 @@ const getPageNumbers = (current, total) => {
   if (end < total-1) pages.push("...");
   pages.push(total);
   return pages;
-};
-
-const withdrawn = txs.filter(t=>t.type==="withdrawal" && t.status==="completed").reduce((a,t)=>a+Math.abs(Number(t.amount)||0),0);
-  return { pending, available, totalEarned, withdrawn };
 };
 
 // Lightweight keyword match against the live catalog — used by the "Ask ShopSaya" assistant
