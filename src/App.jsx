@@ -1393,7 +1393,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
       {/* IMAGE */}
       <div style={{position:"relative",aspectRatio:"4/3",background:LG,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
         {imgOk
-          ? <img src={p.image} alt={p.title} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setImgOk(false)}/>
+          ? <img src={p.image} alt={p.title} style={{width:"100%",height:"100%",objectFit:"contain"}} onError={()=>setImgOk(false)}/>
           : <div style={{fontSize:48}}>{icons[p.category]||"📦"}</div>}
 
         {/* BADGES */}
@@ -1418,7 +1418,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
       {/* BODY */}
       <div style={{padding:12,flex:1,display:"flex",flexDirection:"column",gap:6}}>
         <div style={{fontSize:10,fontWeight:600,color:P,textTransform:"uppercase",letterSpacing:.5}}>{p.category}</div>
-        <div style={{fontSize:13,color:DK,lineHeight:1.45,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",minHeight:57}}>{p.title}</div>
+        <div style={{fontSize:13,color:DK,lineHeight:1.45}}>{p.title}</div>
         <div style={{display:"flex",alignItems:"baseline",gap:6}}>
           <span style={{fontSize:17,fontWeight:800,color:RD}}>{fp(p.price)}</span>
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
@@ -1766,11 +1766,13 @@ function LegalPage({type, setPage, goHome}) {
     ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
   ];
   const termsPaused = [
-    ["About ShopSaya",`ShopSaya is a curated deals platform. We earn a small commission from Shopee when you purchase through our links — at no extra cost to you, same price as buying directly. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
+    ["About ShopSaya",`ShopSaya is a curated deals platform connecting shoppers to vetted products on Shopee Philippines. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
     ["Eligibility","Open to everyone — no account, signup, or login required to browse deals or use Ask ShopSaya."],
     ["How Purchases Work","All payments and checkout happen entirely on Shopee's platform. ShopSaya never collects, processes, or stores any payment information — we simply link you to the real Shopee listing."],
+    ["How We Choose Sellers","We do the hard work so you don't have to. Every product featured on ShopSaya is manually reviewed and selected from Shopee's Preferred Sellers — checked for strong sales history, ratings, and trustworthiness before it ever appears on our site. We only show you sellers and deals we'd be comfortable buying from ourselves."],
     ["Ask ShopSaya Requests","Submitting a product request is free and optional. We do our best to find a relevant, legitimately-sold option but cannot guarantee a match for every request, or any specific timeframe."],
     ["Prohibited","Spamming Ask ShopSaya with abusive, illegal, or unrelated content; scraping or republishing site content without permission; any attempt to disrupt the site."],
+    ["Affiliate Disclosure","We may earn a small commission from Shopee when you purchase through our links — at no extra cost to you. You always pay the exact same price as buying directly on Shopee."],
     ["Limitation of Liability","ShopSaya is not responsible for product quality, delivery, pricing changes, or any disputes arising from a Shopee purchase — these are between you and Shopee/the seller. We make a good-faith effort to feature reputable sellers but cannot guarantee any individual transaction."],
     ["Future Features","An optional cashback rewards program is planned for the future. These Terms will be updated before that launches."],
     ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
