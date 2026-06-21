@@ -1691,7 +1691,7 @@ function HowItWorks({setPage, goHome}) {
     : [["🤖","Ask ShopSaya anything","I-type ang product na hinahanap mo sa Ask ShopSaya — kahit hindi pa nakikita sa site namin, o mag-browse sa curated deals."],["⚡","May match agad?","Kung meron sa catalog namin, makikita mo agad ang legit options — instant, walang hintay."],["🔍","Walang match? Magpa-request ka","Hahanapan ka namin ng totoong legit deal mula sa mga Preferred Sellers sa Shopee — at i-post namin within minutes, hindi araw-araw na hintay."],["🛒","Shop directly on Shopee","Click 'Shop Now' — diretso ka sa totoong Shopee listing. Bayad at checkout gaya ng dati, walang account na kailangan."]];
   const faqs = CASHBACK_LIVE
     ? [["How much cashback will I get?","About 2–20% of the product price — roughly half of what we earn from Shopee's affiliate commission. The exact amount is shown on every product card."],["When will I receive my cashback?","Cashback moves from Pending to Available within 15–45 days after your order is delivered and confirmed."],["What if my order gets cancelled?","Cancelled or returned orders don't generate any commission for us — so no cashback is paid. Only completed orders count."],["Is my GCash number safe?","Absolutely. We only ask for your GCash number when you request a withdrawal. It's stored encrypted and never shared with anyone."],["Do I need to do anything after buying?","No. Just make sure you click our 'Shop & Earn' button before buying. The rest is automatic."]]
-    : [["Is ShopSaya legit, or is this a scam?","We only list products from Shopee's Preferred Sellers with strong sold counts and ratings — every listing links to the real Shopee page, where you pay and check out directly."],["Do I need to create an account?","No. Browse and use Ask ShopSaya freely — no login, no personal info required."],["How does ShopSaya make money?","We earn a small commission from Shopee when you buy through our links, at no extra cost to you — same price as buying directly."],["What if you don't have what I'm looking for?","I-type lang sa Ask ShopSaya o i-drop sa request box ang product name o Shopee link — hahanapan ka namin ng legit na deal at i-post namin ito within minutes, hindi kailangan maghintay ng buong araw."],["Is a cashback/rewards program coming?","Yes — we're focused on building a trustworthy deals catalog first. Rewards are planned for the future!"]];
+    : [["How do you make sure sellers are legit?","We do the hard work so you don't have to. Every product featured on ShopSaya is manually reviewed and selected from Shopee's Preferred Sellers — checked for strong sales history, ratings, and trustworthiness before it ever appears here. We only show you sellers and deals we'd be comfortable buying from ourselves."],["Do I need to create an account?","No. Browse and use Ask ShopSaya freely — no login, no personal info required."],["What if you don't have what I'm looking for?","I-type lang sa Ask ShopSaya o i-drop sa request box ang product name o Shopee link — hahanapan ka namin ng legit na deal at i-post namin ito within minutes, hindi kailangan maghintay ng buong araw."],["Is a cashback/rewards program coming?","Yes — we're focused on building a trustworthy deals catalog first. Rewards are planned for the future!"]];
 
   return (
     <div style={{maxWidth:780,margin:"0 auto",padding:"40px 20px"}}>
@@ -1761,7 +1761,6 @@ function LegalPage({type, setPage, goHome}) {
     ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
   ];
   const termsPaused = [
-    ["About ShopSaya",`ShopSaya is a curated deals platform connecting shoppers to vetted products on Shopee Philippines. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
     ["Eligibility","Open to everyone — no account, signup, or login required to browse deals or use Ask ShopSaya."],
     ["How Purchases Work","All payments and checkout happen entirely on Shopee's platform. ShopSaya never collects, processes, or stores any payment information — we simply link you to the real Shopee listing."],
     ["How We Choose Sellers","We do the hard work so you don't have to. Every product featured on ShopSaya is manually reviewed and selected from Shopee's Preferred Sellers — checked for strong sales history, ratings, and trustworthiness before it ever appears on our site. We only show you sellers and deals we'd be comfortable buying from ourselves."],
@@ -1769,6 +1768,7 @@ function LegalPage({type, setPage, goHome}) {
     ["Prohibited","Spamming Ask ShopSaya with abusive, illegal, or unrelated content; scraping or republishing site content without permission; any attempt to disrupt the site."],
     ["Affiliate Disclosure","We may earn a small commission from Shopee when you purchase through our links — at no extra cost to you. You always pay the exact same price as buying directly on Shopee."],
     ["Limitation of Liability","ShopSaya is not responsible for product quality, delivery, pricing changes, or any disputes arising from a Shopee purchase — these are between you and Shopee/the seller. We make a good-faith effort to feature reputable sellers but cannot guarantee any individual transaction."],
+    ["About ShopSaya",`ShopSaya is a curated deals platform connecting shoppers to vetted products on Shopee Philippines. ShopSaya is NOT officially affiliated with Shopee Philippines.`],
     ["Future Features","An optional cashback rewards program is planned for the future. These Terms will be updated before that launches."],
     ["Contact",`Email: ${SITE_EMAIL} · Response: within 2 business days`]
   ];
@@ -1796,7 +1796,7 @@ function LegalPage({type, setPage, goHome}) {
           </div>
         ))}
         <div style={{marginTop:20,padding:14,background:LG,borderRadius:10,fontSize:11,color:"#9CA3AF",textAlign:"center"}}>
-          ShopSaya PH · {SITE_DOMAIN} · {SITE_EMAIL} · © {new Date().getFullYear()} · Powered by: MSB IT Solutions
+          ShopSaya PH · {SITE_DOMAIN} · {SITE_EMAIL} · © {new Date().getFullYear()}
         </div>
       </div>
     </div>
