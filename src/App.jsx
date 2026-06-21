@@ -194,7 +194,7 @@ function useAuth() {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, login, logout, updateUser, addTransaction, authLoading } = useAuth();
-  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell","admin","ask"];
+  const VALID_PAGES = ["home","dashboard","howto","privacy","terms","sell","affiliate","admin","ask"];
   const pageFromHash = () => {
     const h = window.location.hash.replace("#","");
     return VALID_PAGES.includes(h) ? h : "home";
@@ -212,6 +212,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("shuffle");
+  const [searchMode, setSearchMode] = useState("item");
   const [prodPage, setProdPage] = useState(1);
   const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random()*1e9));
   const goHome = () => { setSearch(""); setCat("All"); setSort("shuffle"); setProdPage(1); setShuffleSeed(Math.floor(Math.random()*1e9)); setPage("home"); };
@@ -277,7 +278,9 @@ export default function App() {
 
   const filtered = products.filter(p =>
     (cat==="All" || p.category===cat) &&
-    (!search || p.title.toLowerCase().includes(search.toLowerCase()))
+    (!search || (searchMode==="affiliate"
+      ? (p.affiliateName||"").toLowerCase().includes(search.toLowerCase())
+      : p.title.toLowerCase().includes(search.toLowerCase())))
   ).sort((a,b) => {
     if(sort==="shuffle") return seededRand(shuffleSeed,a.id) - seededRand(shuffleSeed,b.id);
     if(sort==="commission") return b.commRate-a.commRate;
@@ -382,6 +385,9 @@ export default function App() {
             <button onClick={()=>setPage("sell")} style={{background:page==="sell"?AC:AL,color:page==="sell"?WH:AC,border:`1.5px solid ${AC}`,borderRadius:22,padding:"8px 18px 8px 14px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:7}}>
               <span style={{fontSize:18,lineHeight:1}}>🏪</span> Seller ka?
             </button>
+            <button onClick={()=>setPage("affiliate")} style={{background:page==="affiliate"?P:"none",color:page==="affiliate"?WH:GY,border:`1.5px solid ${page==="affiliate"?P:"#E5E7EB"}`,borderRadius:22,padding:"8px 18px 8px 14px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:7}}>
+              <span style={{fontSize:18,lineHeight:1}}>🤝</span> Co-Affiliate?
+            </button>
             {CASHBACK_LIVE && (user ? (
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>setPage("dashboard")} style={{background:page==="dashboard"?P:LG,color:page==="dashboard"?WH:DK,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
@@ -415,12 +421,13 @@ export default function App() {
         </div>
       )}
 
-      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
+      {page==="home" && <HomePage filtered={filtered} paginated={paginated} prodPage={prodPage} setProdPage={v=>{setProdPage(v);}} totalPages={totalPages} search={search} setSearch={v=>{setSearch(v);setProdPage(1);}} searchMode={searchMode} setSearchMode={v=>{setSearchMode(v);setSearch("");setProdPage(1);}} cat={cat} setCat={v=>{setCat(v);setProdPage(1);}} sort={sort} setSort={setSort} handleShop={handleShop} handleCopy={handleCopy} copied={copied} user={user} setShowLogin={setShowLogin} setPage={setPage} showToast={showToast} products={products} />}
       {page==="dashboard" && CASHBACK_LIVE && user && <Dashboard user={user} updateUser={updateUser} addTransaction={addTransaction} showToast={showToast} setPage={setPage} goHome={goHome} handleShopOffer={handleShopOffer} />}
       {page==="howto" && <HowItWorks setPage={setPage} goHome={goHome} />}
       {page==="privacy" && <LegalPage type="privacy" setPage={setPage} goHome={goHome} />}
       {page==="terms" && <LegalPage type="terms" setPage={setPage} goHome={goHome} />}
       {page==="sell" && <SellerPage showToast={showToast} />}
+      {page==="affiliate" && <AffiliatePage showToast={showToast} />}
       {page==="ask" && <AskShopSaya user={user} products={products} showToast={showToast} setShowLogin={setShowLogin} handleShop={handleShop} handleShopOffer={handleShopOffer} setPage={setPage} />}
       {page==="admin" && <AdminPage user={user} setShowLogin={setShowLogin} showToast={showToast} products={products} />}
 
@@ -502,8 +509,9 @@ function LoginModal({onLogin, onClose}) {
 }
 
 // ─── HOME PAGE ────────────────────────────────────────────────────────────────
-function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage,showToast,products}) {
+function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,setSearch,searchMode,setSearchMode,cat,setCat,sort,setSort,handleShop,handleCopy,copied,user,setShowLogin,setPage,showToast,products}) {
   const total = products.reduce((a,p)=>a+getCashback(p),0);
+  const [showSuggest, setShowSuggest] = useState(false);
   return (
     <>
       {/* HERO BANNER */}
@@ -614,11 +622,42 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
       <main style={{maxWidth:1200,margin:"0 auto",padding:"24px 16px"}}>
         {/* FILTERS */}
         <div style={{background:WH,borderRadius:14,padding:16,marginBottom:18,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-          <input style={{width:"100%",padding:"10px 16px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:14,marginBottom:12,boxSizing:"border-box",outline:"none",transition:"border .2s"}}
-            placeholder="Maghanap ng deals..."
-            value={search} onChange={e=>setSearch(e.target.value)}
-            onFocus={e=>e.target.style.borderColor=P}
-            onBlur={e=>e.target.style.borderColor="#E5E7EB"} />
+          <div style={{display:"flex",gap:8,marginBottom:10}}>
+            {[["item","🔍 Search by Item"],["affiliate","🤝 Search by Affiliate"]].map(([m,label])=>(
+              <button key={m} onClick={()=>setSearchMode(m)} style={{flex:1,padding:"8px 0",borderRadius:8,border:searchMode===m?`1.5px solid ${P}`:"1.5px solid #E5E7EB",background:searchMode===m?PL:WH,color:searchMode===m?P:GY,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div style={{position:"relative",marginBottom:12}}>
+            <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",fontSize:18,pointerEvents:"none"}}>🔍</span>
+            <input style={{width:"100%",padding:"14px 16px 14px 46px",border:`2px solid ${P}55`,borderRadius:12,fontSize:15,fontWeight:600,boxSizing:"border-box",outline:"none",transition:"border .2s",background:PL}}
+              placeholder={searchMode==="affiliate" ? "I-type ang pangalan ng affiliate..." : "I-type ang gusto mong item dito..."}
+              value={search} onChange={e=>{setSearch(e.target.value);setShowSuggest(true);}}
+              onFocus={e=>{e.target.style.borderColor=P;e.target.style.background=WH;setShowSuggest(true);}}
+              onBlur={e=>{e.target.style.borderColor=`${P}55`;e.target.style.background=PL;setTimeout(()=>setShowSuggest(false),150);}} />
+
+            {searchMode==="affiliate" && showSuggest && search.trim() && (() => {
+              const names = [...new Set(products.map(p=>p.affiliateName).filter(Boolean))];
+              const matches = names.filter(n=>n.toLowerCase().includes(search.toLowerCase()));
+              return matches.length>0 ? (
+                <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:WH,border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:20,overflow:"hidden"}}>
+                  {matches.slice(0,8).map(n=>(
+                    <div key={n} onMouseDown={()=>{setSearch(n);setShowSuggest(false);}} style={{padding:"10px 16px",fontSize:13,color:DK,cursor:"pointer",borderBottom:"1px solid #F3F4F6"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=LG}
+                      onMouseLeave={e=>e.currentTarget.style.background=WH}>
+                      🤝 {n}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
+          </div>
+
+          {searchMode==="affiliate" && products.filter(p=>p.affiliateName).length===0 && (
+            <div style={{fontSize:12,color:GY,marginBottom:12}}>Walang affiliate links pa. Tingnan ang "Co-Affiliate?" sa nav para mag-submit.</div>
+          )}
+
           <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {CATEGORIES.map(c=>(
@@ -825,6 +864,140 @@ function SellerPage({showToast}) {
 }
 
 
+function AffiliatePage({showToast}) {
+  const [link, setLink] = useState("");
+  const [affiliateName, setAffiliateName] = useState("");
+  const [contact, setContact] = useState("");
+  const [price, setPrice] = useState("");
+  const [commRate, setCommRate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
+
+  const submit = async () => {
+    const l = link.trim(), n = affiliateName.trim();
+    if (!l || !/^https?:\/\//i.test(l)) { showToast("I-paste ang buong Shopee affiliate link mo (dapat magsimula sa https://)", "error"); return; }
+    if (!n) { showToast("I-type ang affiliate/display name mo", "error"); return; }
+    if (!price || Number(price) <= 0) { showToast("I-type ang tamang price ng product", "error"); return; }
+    setBusy(true);
+
+    // 5 free submissions per affiliate name, per rolling 24 hours — beyond that,
+    // they need to reach out for paid additional slots (anti-flood + monetization).
+    try {
+      const dayAgo = Date.now() - 24*60*60*1000;
+      const existing = await getDocs(query(collection(db, "affiliateSubmissions"), where("affiliateName", "==", n)));
+      const recentCount = existing.docs.filter(d => {
+        const ts = d.data().createdAt;
+        const ms = ts?.toMillis ? ts.toMillis() : (ts?.seconds ? ts.seconds*1000 : 0);
+        return ms >= dayAgo;
+      }).length;
+      if (recentCount >= 5) {
+        setLimitReached(true);
+        setBusy(false);
+        return;
+      }
+    } catch (e) {
+      console.error("Rate limit check failed, continuing:", e);
+    }
+
+    let preview = { title: null, image: null };
+    try {
+      const res = await fetch("https://fetchproductpreview-1071825458706.asia-southeast1.run.app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: l }),
+      });
+      if (res.ok) preview = await res.json();
+    } catch (e) {
+      console.error("Preview fetch failed, continuing without it:", e);
+    }
+
+    try {
+      await addDoc(collection(db, "affiliateSubmissions"), {
+        link: l,
+        affiliateName: n,
+        contact: contact.trim() || null,
+        title: preview.title || null,
+        image: preview.image || null,
+        price: Number(price),
+        commRate: Number(commRate) || 0,
+        createdAt: serverTimestamp(),
+        status: "pending",
+      });
+      setDone(true);
+    } catch (e) {
+      console.error("Failed to submit affiliate link:", e);
+      showToast("Hindi na-submit. Subukan ulit.", "error");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{maxWidth:560,margin:"0 auto",padding:"40px 20px"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:36,marginBottom:8}}>🤝</div>
+        <div style={{fontWeight:800,fontSize:22,color:DK,marginBottom:6}}>Affiliate Ka Rin? I-feature Dito ang Links Mo!</div>
+        <div style={{fontSize:13,color:GY,maxWidth:420,margin:"0 auto"}}>
+          I-submit ang sarili mong Shopee affiliate link — pagka-approve, makikita ito sa Deals page may sariling "via {`{`}Affiliate Name{`}`}" badge, at puwede ka ring hanapin ng mga shopper sa pamamagitan ng pangalan mo.
+        </div>
+      </div>
+
+      {limitReached ? (
+        <div style={{background:WH,border:`1.5px solid ${P}`,borderRadius:16,padding:28,textAlign:"center"}}>
+          <div style={{fontSize:32,marginBottom:10}}>🙌</div>
+          <div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:8}}>Naabot mo na ang 5 libreng submissions mo ngayong 24 oras!</div>
+          <div style={{fontSize:13,color:GY,marginBottom:18,lineHeight:1.6}}>
+            Sobrang sulit ng pagiging affiliate mo, ano? 😄 Kung gusto mong mag-post pa ng karagdagang links, message lang kami — pag-uusapan namin ang karagdagang slots para sa'yo.
+          </div>
+          <a href={`mailto:${SITE_EMAIL}?subject=${encodeURIComponent("Paid Affiliate Posting Request")}&body=${encodeURIComponent(`Hi ShopSaya,\n\nGusto kong mag-post ng karagdagang affiliate links. Affiliate name ko: ${affiliateName || "(your name)"}.\n\nThanks!`)}`}
+            style={{display:"inline-block",background:P,color:WH,border:"none",borderRadius:10,padding:"12px 24px",fontWeight:700,fontSize:14,textDecoration:"none"}}>
+            ✉️ Message Us
+          </a>
+          <div style={{marginTop:14}}>
+            <button onClick={()=>setLimitReached(false)} style={{background:"none",border:"none",color:GY,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>← Bumalik sa form</button>
+          </div>
+        </div>
+      ) : done ? (
+        <div style={{background:AL,border:`1.5px solid ${AC}`,borderRadius:14,padding:24,textAlign:"center"}}>
+          <div style={{fontSize:28,marginBottom:8}}>✅</div>
+          <div style={{fontWeight:700,fontSize:15,color:DK,marginBottom:6}}>Salamat sa pag-submit!</div>
+          <div style={{fontSize:13,color:GY}}>Susuriin namin ito within 1-2 business days. Makikita mo ito sa Deals page kapag na-approve, naka-tag sa pangalan mo.</div>
+        </div>
+      ) : (
+        <div style={{background:WH,borderRadius:16,padding:24,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Iyong Shopee Affiliate Link *</label>
+            <input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://s.shopee.ph/... (ang link mo, hindi sa iba)" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Affiliate / Display Name Mo *</label>
+            <input value={affiliateName} onChange={e=>setAffiliateName(e.target.value)} placeholder="hal. Juana Dela Cruz" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            <div style={{fontSize:11,color:"#9CA3AF",marginTop:4}}>Ito ang lalabas sa "via" badge at ito ang ihahanap ng mga shopper.</div>
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            <div style={{flex:1}}>
+              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Price ₱ *</label>
+              <input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="hal. 299" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Commission % (optional)</label>
+              <input type="number" value={commRate} onChange={e=>setCommRate(e.target.value)} placeholder="hal. 10" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Facebook o Contact Number (optional)</label>
+            <input value={contact} onChange={e=>setContact(e.target.value)} placeholder="Para makontak ka namin kung may tanong" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <button onClick={submit} disabled={busy} style={{width:"100%",background:AC,color:WH,border:"none",borderRadius:10,padding:"13px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1}}>
+            {busy ? "Sending..." : "I-submit ang Link Ko"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── ASK SHOPSAYA (AI-style deal finder chat) ────────────────────────────────
 function AskShopSaya({user, products, showToast, setShowLogin, handleShop, handleShopOffer, setPage}) {
   const [messages, setMessages] = useState([
@@ -994,6 +1167,7 @@ const ADMIN_UID = "0QbPdrae5YTaURCqW4l6HEEH23l2";
 
 function AdminPage({user, setShowLogin, showToast, products}) {
   const [submissions, setSubmissions] = useState([]);
+  const [affiliateSubs, setAffiliateSubs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [clicks, setClicks] = useState([]);
   const [payouts, setPayouts] = useState([]);
@@ -1005,6 +1179,7 @@ function AdminPage({user, setShowLogin, showToast, products}) {
   const [bulkJson, setBulkJson] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [imgFillProgress, setImgFillProgress] = useState(null);
+  const [tagBusy, setTagBusy] = useState(false);
 
   const isAdmin = user && user.id === ADMIN_UID;
 
@@ -1014,6 +1189,8 @@ function AdminPage({user, setShowLogin, showToast, products}) {
       try {
         const subSnap = await getDocs(query(collection(db, "sellerSubmissions"), where("status", "==", "pending")));
         setSubmissions(subSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        const affSnap = await getDocs(query(collection(db, "affiliateSubmissions"), where("status", "==", "pending")));
+        setAffiliateSubs(affSnap.docs.map(d => ({id: d.id, ...d.data()})));
         const reqSnap = await getDocs(query(collection(db, "productRequests"), where("status", "==", "pending")));
         setRequests(reqSnap.docs.map(d => ({id: d.id, ...d.data()})));
         if (CASHBACK_LIVE) {
@@ -1126,6 +1303,26 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     setImgFillProgress(null);
   };
 
+  // One-time: tag your own existing catalog with your real affiliate name
+  // (every current product already uses your real affiliate link, so this is
+  // just correctly labeling what's already true — not creating new data).
+  const tagMyProducts = async () => {
+    const targets = products.filter(p => !p.affiliateName);
+    if (targets.length === 0) { showToast("Lahat ng products may affiliate name na.", "error"); return; }
+    setTagBusy(true);
+    let count = 0;
+    for (const p of targets) {
+      try {
+        await updateDoc(doc(db, "products", String(p.id)), { affiliateName: "kashim1080" });
+        count++;
+      } catch (e) {
+        console.error("Tagging failed for", p.id, e);
+      }
+    }
+    showToast(`Tagged ${count} products as kashim1080!`);
+    setTagBusy(false);
+  };
+
   const approveSubmission = async (sub) => {
     const d = drafts[sub.id] || {};
     const price = Number(d.price ?? sub.price), commRate = Number(d.commRate ?? sub.commRate ?? 2), category = d.category;
@@ -1156,6 +1353,41 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     try {
       await updateDoc(doc(db, "sellerSubmissions", id), { status: "rejected" });
       setSubmissions(prev => prev.filter(s => s.id !== id));
+      showToast("Submission rejected.");
+    } catch (e) { console.error(e); }
+  };
+
+  const approveAffiliateSub = async (sub) => {
+    const d = drafts[sub.id] || {};
+    const price = Number(d.price ?? sub.price), commRate = Number(d.commRate ?? sub.commRate ?? 0), category = d.category;
+    if (!price || !category) { showToast("Kumpletuhin ang price at category.", "error"); return; }
+    try {
+      const newId = "aff_" + sub.id;
+      await setDoc(doc(db, "products", newId), {
+        id: newId,
+        title: sub.title || `${sub.affiliateName}'s pick`,
+        image: sub.image || "",
+        price,
+        sold: 0,
+        commRate,
+        discount: Number(d.discount) || 0,
+        category,
+        affiliateLink: sub.link,
+        affiliateName: sub.affiliateName,
+      });
+      await updateDoc(doc(db, "affiliateSubmissions", sub.id), { status: "approved" });
+      setAffiliateSubs(prev => prev.filter(s => s.id !== sub.id));
+      showToast("Na-publish ang affiliate link!");
+    } catch (e) {
+      console.error("Approve failed:", e);
+      showToast("Failed to approve. Check console.", "error");
+    }
+  };
+
+  const rejectAffiliateSub = async (id) => {
+    try {
+      await updateDoc(doc(db, "affiliateSubmissions", id), { status: "rejected" });
+      setAffiliateSubs(prev => prev.filter(s => s.id !== id));
       showToast("Submission rejected.");
     } catch (e) { console.error(e); }
   };
@@ -1246,6 +1478,16 @@ function AdminPage({user, setShowLogin, showToast, products}) {
             {imgFillProgress ? `Naghahanap... ${imgFillProgress.done}/${imgFillProgress.total} (${imgFillProgress.found} found)` : "Backfill Images"}
           </button>
         </div>
+
+        <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #F3F4F6"}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🏷️ Enroll Yourself as First Affiliate</div>
+          <div style={{fontSize:12,color:GY,marginBottom:10}}>
+            One-time tag: marks every existing product (they're all already your real links) with affiliate name "kashim1080" — lets you test Search by Affiliate with real data.
+          </div>
+          <button onClick={tagMyProducts} disabled={tagBusy} style={{background:tagBusy?"#9CA3AF":P,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:tagBusy?"default":"pointer"}}>
+            {tagBusy ? "Tagging..." : "Tag My Products as kashim1080"}
+          </button>
+        </div>
       </div>
 
       <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"flex-start"}}>
@@ -1273,6 +1515,36 @@ function AdminPage({user, setShowLogin, showToast, products}) {
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>approveSubmission(sub)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:11,cursor:"pointer"}}>Approve & Publish</button>
                   <button onClick={()=>rejectSubmission(sub.id)} style={{background:"none",color:GY,border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 14px",fontWeight:600,fontSize:11,cursor:"pointer"}}>Reject</button>
+                </div>
+              </div>
+            </div>
+          ))}
+          </div>
+        </div>
+
+        {/* COLUMN 1B: AFFILIATE SUBMISSIONS */}
+        <div style={{flex:1,minWidth:320}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>Pending Affiliate Links ({affiliateSubs.length})</div>
+          {affiliateSubs.length===0 && <div style={{color:GY,fontSize:13}}>Walang pending affiliate links.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {affiliateSubs.map(sub => (
+            <div key={sub.id} style={{background:WH,border:"1px solid #E5E7EB",borderRadius:12,padding:16,display:"flex",gap:14}}>
+              {sub.image ? <img src={sub.image} alt="" style={{width:60,height:60,borderRadius:8,objectFit:"cover",flexShrink:0}}/> : <div style={{width:60,height:60,borderRadius:8,background:LG,flexShrink:0}}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sub.title || "(walang title na-fetch)"}</div>
+                <div style={{fontSize:12,color:GY,marginBottom:8}}>via {sub.affiliateName} · {sub.contact || "no contact"} · <a href={sub.link} target="_blank" rel="noreferrer">link</a></div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                  <input placeholder="Price ₱" type="number" defaultValue={sub.price || ""} onChange={e=>setDraft(sub.id,"price",e.target.value)} style={{width:75,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <input placeholder="Comm %" type="number" defaultValue={sub.commRate || ""} onChange={e=>setDraft(sub.id,"commRate",e.target.value)} style={{width:75,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <input placeholder="Discount %" type="number" onChange={e=>setDraft(sub.id,"discount",e.target.value)} style={{width:85,padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}/>
+                  <select onChange={e=>setDraft(sub.id,"category",e.target.value)} defaultValue="" style={{padding:"6px 8px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11}}>
+                    <option value="" disabled>Category</option>
+                    {CATEGORIES.filter(c=>c!=="All").map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>approveAffiliateSub(sub)} style={{background:AC,color:WH,border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:11,cursor:"pointer"}}>Approve & Publish</button>
+                  <button onClick={()=>rejectAffiliateSub(sub.id)} style={{background:"none",color:GY,border:"1px solid #E5E7EB",borderRadius:8,padding:"7px 14px",fontWeight:600,fontSize:11,cursor:"pointer"}}>Reject</button>
                 </div>
               </div>
             </div>
@@ -1418,6 +1690,12 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           <span style={{fontSize:17,fontWeight:800,color:RD}}>{fp(p.price)}</span>
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
         </div>
+
+        {p.affiliateName && (
+          <div style={{fontSize:10,color:P,fontWeight:600,background:PL,display:"inline-block",padding:"2px 8px",borderRadius:10,width:"fit-content"}}>
+            via {p.affiliateName}
+          </div>
+        )}
 
         {CASHBACK_LIVE && (
           <div style={{display:"flex",gap:6}}>
