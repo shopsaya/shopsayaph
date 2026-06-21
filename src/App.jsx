@@ -678,6 +678,18 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
           </div>
         </div>
 
+        {searchMode==="affiliate" && search.trim() && filtered.length>0 && (
+          <div style={{background:`linear-gradient(135deg,${PL} 0%,#FFF 100%)`,border:`1.5px solid ${P}`,borderRadius:14,padding:18,marginBottom:16,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+            <div style={{fontSize:28}}>👤</div>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontWeight:800,fontSize:16,color:DK}}>{search}'s ShopSaya Picks</div>
+              <div style={{fontSize:12,color:GY}}>
+                {filtered.length} {filtered.length===1?"product":"products"} · {filtered.reduce((a,p)=>a+(p.clickCount||0),0)} total clicks
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* GRID */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:14}}>
           {paginated.map(p=><ProductCard key={p.id} product={p} onShop={()=>handleShop(p)} onCopy={()=>handleCopy(p)} copied={copied===p.id} user={user} />)}
@@ -878,7 +890,6 @@ function AffiliatePage({showToast}) {
     const l = link.trim(), n = affiliateName.trim();
     if (!l || !/^https?:\/\//i.test(l)) { showToast("I-paste ang buong Shopee affiliate link mo (dapat magsimula sa https://)", "error"); return; }
     if (!n) { showToast("I-type ang affiliate/display name mo", "error"); return; }
-    if (!price || Number(price) <= 0) { showToast("I-type ang tamang price ng product", "error"); return; }
     setBusy(true);
 
     // 5 free submissions per affiliate name, per rolling 24 hours — beyond that,
@@ -976,8 +987,8 @@ function AffiliatePage({showToast}) {
           </div>
           <div style={{display:"flex",gap:10,marginBottom:14}}>
             <div style={{flex:1}}>
-              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Price ₱ *</label>
-              <input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="hal. 299" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+              <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Price ₱ (optional)</label>
+              <input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder="hal. 299 — kung di sigurado, kami na bahala" style={{width:"100%",padding:"11px 14px",border:"1.5px solid #E5E7EB",borderRadius:10,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
             </div>
             <div style={{flex:1}}>
               <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Commission % (optional)</label>
@@ -1668,6 +1679,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           {p.discount>0 && <span style={{background:RD,color:WH,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6}}>{p.discount}% OFF</span>}
           {p.commRate>=15 && <span style={{background:YL,color:WH,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6}}>🔥 Hot</span>}
           {p.sold>=1000 && <span style={{background:AC,color:WH,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6}}>⭐ Top</span>}
+          {p.affiliateName && p.affiliateName!=="kashim1080" && p.clickCount>0 && <span style={{background:"#7C3AED",color:WH,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6}}>👆 {p.clickCount} clicks</span>}
         </div>
 
         {/* TOP-RIGHT PILL */}
@@ -1691,7 +1703,7 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
         </div>
 
-        {p.affiliateName && (
+        {p.affiliateName && p.affiliateName !== "kashim1080" && (
           <div style={{fontSize:10,color:P,fontWeight:600,background:PL,display:"inline-block",padding:"2px 8px",borderRadius:10,width:"fit-content"}}>
             via {p.affiliateName}
           </div>
