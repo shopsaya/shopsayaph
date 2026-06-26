@@ -72,6 +72,20 @@ const seededRand = (seed, id) => {
   return h;
 };
 
+// Every store/affiliate gets one consistent, memorable 5-digit number — auto
+// assigned once, then reused forever for that exact name. Looks at the
+// already-loaded products list to find an existing number for this name, or
+// picks a fresh unused 5-digit number if it's the first time seeing it.
+const getOrAssignNumber = (products, name) => {
+  if (!name) return "";
+  const existing = products.find(p => (p.storeName===name || p.affiliateName===name) && p.storeNumber);
+  if (existing) return existing.storeNumber;
+  const used = new Set(products.map(p=>p.storeNumber).filter(Boolean));
+  let num;
+  do { num = String(Math.floor(10000 + Math.random()*90000)); } while (used.has(num));
+  return num;
+};
+
 // Windowed pagination — shows first/last page plus a few around the current
 // one, with "..." for gaps, instead of every single page number.
 const getPageNumbers = (current, total) => {
@@ -279,7 +293,7 @@ export default function App() {
   const filtered = products.filter(p =>
     (cat==="All" || p.category===cat) &&
     (!search || (searchMode==="affiliate"
-      ? (p.affiliateName||"").toLowerCase().includes(search.toLowerCase())
+      ? [p.affiliateName, p.storeName, p.storeNumber].some(v => (v||"").toLowerCase().includes(search.toLowerCase()))
       : p.title.toLowerCase().includes(search.toLowerCase())))
   ).sort((a,b) => {
     if(sort==="shuffle") return seededRand(shuffleSeed,a.id) - seededRand(shuffleSeed,b.id);
@@ -623,7 +637,7 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
         {/* FILTERS */}
         <div style={{background:WH,borderRadius:14,padding:16,marginBottom:18,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            {[["item","🔍 Search by Item"],["affiliate","🤝 Search by Affiliate"]].map(([m,label])=>(
+            {[["item","🔍 Search by Item"],["affiliate","🏬 Search by Store/Affiliate"]].map(([m,label])=>(
               <button key={m} onClick={()=>setSearchMode(m)} style={{flex:1,padding:"8px 0",borderRadius:8,border:searchMode===m?`1.5px solid ${P}`:"1.5px solid #E5E7EB",background:searchMode===m?PL:WH,color:searchMode===m?P:GY,fontWeight:700,fontSize:12,cursor:"pointer"}}>
                 {label}
               </button>
@@ -632,21 +646,21 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
           <div style={{position:"relative",marginBottom:12}}>
             <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",fontSize:18,pointerEvents:"none"}}>🔍</span>
             <input style={{width:"100%",padding:"14px 16px 14px 46px",border:`2px solid ${P}55`,borderRadius:12,fontSize:15,fontWeight:600,boxSizing:"border-box",outline:"none",transition:"border .2s",background:PL}}
-              placeholder={searchMode==="affiliate" ? "I-type ang pangalan ng affiliate..." : "I-type ang gusto mong item dito..."}
+              placeholder={searchMode==="affiliate" ? "I-type ang pangalan ng store, affiliate, o store number..." : "I-type ang gusto mong item dito..."}
               value={search} onChange={e=>{setSearch(e.target.value);setShowSuggest(true);}}
               onFocus={e=>{e.target.style.borderColor=P;e.target.style.background=WH;setShowSuggest(true);}}
               onBlur={e=>{e.target.style.borderColor=`${P}55`;e.target.style.background=PL;setTimeout(()=>setShowSuggest(false),150);}} />
 
             {searchMode==="affiliate" && showSuggest && search.trim() && (() => {
-              const names = [...new Set(products.map(p=>p.affiliateName).filter(Boolean))];
-              const matches = names.filter(n=>n.toLowerCase().includes(search.toLowerCase()));
+              const pool = [...new Set(products.flatMap(p=>[p.affiliateName, p.storeName, p.storeNumber]).filter(Boolean))];
+              const matches = pool.filter(n=>n.toLowerCase().includes(search.toLowerCase()));
               return matches.length>0 ? (
                 <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:WH,border:"1.5px solid #E5E7EB",borderRadius:10,boxShadow:"0 4px 16px rgba(0,0,0,.1)",zIndex:20,overflow:"hidden"}}>
                   {matches.slice(0,8).map(n=>(
                     <div key={n} onMouseDown={()=>{setSearch(n);setShowSuggest(false);}} style={{padding:"10px 16px",fontSize:13,color:DK,cursor:"pointer",borderBottom:"1px solid #F3F4F6"}}
                       onMouseEnter={e=>e.currentTarget.style.background=LG}
                       onMouseLeave={e=>e.currentTarget.style.background=WH}>
-                      🤝 {n}
+                      🏬 {n}
                     </div>
                   ))}
                 </div>
@@ -654,8 +668,8 @@ function HomePage({filtered,paginated,prodPage,setProdPage,totalPages,search,set
             })()}
           </div>
 
-          {searchMode==="affiliate" && products.filter(p=>p.affiliateName).length===0 && (
-            <div style={{fontSize:12,color:GY,marginBottom:12}}>Walang affiliate links pa. Tingnan ang "Co-Affiliate?" sa nav para mag-submit.</div>
+          {searchMode==="affiliate" && products.filter(p=>p.affiliateName||p.storeName).length===0 && (
+            <div style={{fontSize:12,color:GY,marginBottom:12}}>Walang store o affiliate links pa. Tingnan ang "Co-Affiliate?" sa nav para mag-submit.</div>
           )}
 
           <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
@@ -1269,14 +1283,18 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     setBulkBusy(true);
     let added = 0;
     const storeName = bulkStoreName.trim();
+    const storeNumber = storeName ? getOrAssignNumber(products, storeName) : "";
     try {
       for (const p of arr) {
         if (!p.id || !p.title || !p.affiliateLink) continue;
-        const toSave = storeName ? { ...p, storeName } : p;
+        const extra = {};
+        if (storeName) extra.storeName = storeName;
+        if (storeNumber) extra.storeNumber = storeNumber;
+        const toSave = Object.keys(extra).length ? { ...p, ...extra } : p;
         await setDoc(doc(db, "products", String(p.id)), toSave, { merge: true });
         added++;
       }
-      showToast(`${added} products added/updated sa catalog!`);
+      showToast(storeNumber ? `${added} products added! Store #${storeNumber}` : `${added} products added/updated sa catalog!`);
       setBulkJson("");
     } catch (e) {
       console.error("Bulk add failed:", e);
@@ -1377,6 +1395,7 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     if (!price || !category) { showToast("Kumpletuhin ang price at category.", "error"); return; }
     try {
       const newId = "aff_" + sub.id;
+      const storeNumber = getOrAssignNumber(products, sub.affiliateName);
       await setDoc(doc(db, "products", newId), {
         id: newId,
         title: sub.title || `${sub.affiliateName}'s pick`,
@@ -1388,10 +1407,11 @@ function AdminPage({user, setShowLogin, showToast, products}) {
         category,
         affiliateLink: sub.link,
         affiliateName: sub.affiliateName,
+        storeNumber,
       });
       await updateDoc(doc(db, "affiliateSubmissions", sub.id), { status: "approved" });
       setAffiliateSubs(prev => prev.filter(s => s.id !== sub.id));
-      showToast("Na-publish ang affiliate link!");
+      showToast(`Na-publish ang affiliate link! Affiliate #${storeNumber}`);
     } catch (e) {
       console.error("Approve failed:", e);
       showToast("Failed to approve. Check console.", "error");
@@ -1480,9 +1500,19 @@ function AdminPage({user, setShowLogin, showToast, products}) {
         <textarea value={bulkJson} onChange={e=>setBulkJson(e.target.value)} placeholder='[{"id":"123","title":"...","price":499,"sold":120,"commRate":10,"discount":0,"category":"Electronics","affiliateLink":"https://s.shopee.ph/...","image":"https://..."}]'
           style={{width:"100%",minHeight:90,padding:10,border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11,fontFamily:"monospace",boxSizing:"border-box",marginBottom:8,resize:"vertical"}}/>
 
-        <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Store / Shop Name (optional)</label>
-        <input value={bulkStoreName} onChange={e=>setBulkStoreName(e.target.value)} placeholder='hal. "MEEVIDA Home Appliance" — i-tatag sa LAHAT ng products sa batch na ito'
-          style={{width:"100%",padding:"9px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,boxSizing:"border-box",marginBottom:10}}/>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <div style={{flex:2}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Store / Shop Name (optional)</label>
+            <input value={bulkStoreName} onChange={e=>setBulkStoreName(e.target.value)} placeholder='hal. "MEEVIDA Home Appliance"'
+              style={{width:"100%",padding:"9px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,boxSizing:"border-box"}}/>
+          </div>
+          <div style={{flex:1}}>
+            <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Auto Store #</label>
+            <input value={bulkStoreName.trim() ? `#${getOrAssignNumber(products, bulkStoreName.trim())}` : ""} disabled placeholder="—"
+              style={{width:"100%",padding:"9px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,boxSizing:"border-box",background:LG,color:DK,fontWeight:700}}/>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:"#9CA3AF",marginBottom:10}}>Auto-assigned 5-digit number — same store name always gets the same number, walang kailangan i-type.</div>
 
         <button onClick={bulkAddProducts} disabled={bulkBusy||!bulkJson.trim()} style={{background:bulkBusy?"#9CA3AF":AC,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:bulkBusy?"default":"pointer"}}>
           {bulkBusy?"Adding...":"Add to Catalog"}
@@ -1501,7 +1531,7 @@ function AdminPage({user, setShowLogin, showToast, products}) {
         <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #F3F4F6"}}>
           <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🏷️ Enroll Yourself as First Affiliate</div>
           <div style={{fontSize:12,color:GY,marginBottom:10}}>
-            One-time tag: marks every existing product (they're all already your real links) with affiliate name "kashim1080" — lets you test Search by Affiliate with real data.
+            One-time tag: marks every existing product (they're all already your real links) with affiliate name "kashim1080" — lets you test Search by Store/Affiliate with real data.
           </div>
           <button onClick={tagMyProducts} disabled={tagBusy} style={{background:tagBusy?"#9CA3AF":P,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:tagBusy?"default":"pointer"}}>
             {tagBusy ? "Tagging..." : "Tag My Products as kashim1080"}
@@ -1715,12 +1745,12 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
             {p.storeName && (
               <div style={{fontSize:10,color:GY,fontWeight:600,background:LG,display:"inline-block",padding:"2px 8px",borderRadius:10}}>
-                🏬 {p.storeName}
+                🏬 {p.storeName}{p.storeNumber?` · #${p.storeNumber}`:""}
               </div>
             )}
             {p.affiliateName && p.affiliateName !== "kashim1080" && (
               <div style={{fontSize:10,color:P,fontWeight:600,background:PL,display:"inline-block",padding:"2px 8px",borderRadius:10}}>
-                via {p.affiliateName}
+                via {p.affiliateName}{!p.storeName && p.storeNumber?` · #${p.storeNumber}`:""}
               </div>
             )}
           </div>
