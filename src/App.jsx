@@ -1188,6 +1188,7 @@ function AdminPage({user, setShowLogin, showToast, products}) {
   const [offerDrafts, setOfferDrafts] = useState({});
   const [creditAmts, setCreditAmts] = useState({});
   const [bulkJson, setBulkJson] = useState("");
+  const [bulkStoreName, setBulkStoreName] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [imgFillProgress, setImgFillProgress] = useState(null);
   const [tagBusy, setTagBusy] = useState(false);
@@ -1267,10 +1268,12 @@ function AdminPage({user, setShowLogin, showToast, products}) {
     }
     setBulkBusy(true);
     let added = 0;
+    const storeName = bulkStoreName.trim();
     try {
       for (const p of arr) {
         if (!p.id || !p.title || !p.affiliateLink) continue;
-        await setDoc(doc(db, "products", String(p.id)), p, { merge: true });
+        const toSave = storeName ? { ...p, storeName } : p;
+        await setDoc(doc(db, "products", String(p.id)), toSave, { merge: true });
         added++;
       }
       showToast(`${added} products added/updated sa catalog!`);
@@ -1476,6 +1479,11 @@ function AdminPage({user, setShowLogin, showToast, products}) {
         <div style={{fontSize:12,color:GY,marginBottom:10}}>Paste mo lang dito ang JSON array na binigay ko galing sa Batch Get Link mo, then "Add to Catalog."</div>
         <textarea value={bulkJson} onChange={e=>setBulkJson(e.target.value)} placeholder='[{"id":"123","title":"...","price":499,"sold":120,"commRate":10,"discount":0,"category":"Electronics","affiliateLink":"https://s.shopee.ph/...","image":"https://..."}]'
           style={{width:"100%",minHeight:90,padding:10,border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:11,fontFamily:"monospace",boxSizing:"border-box",marginBottom:8,resize:"vertical"}}/>
+
+        <label style={{fontSize:12,fontWeight:600,color:DK,display:"block",marginBottom:5}}>Store / Shop Name (optional)</label>
+        <input value={bulkStoreName} onChange={e=>setBulkStoreName(e.target.value)} placeholder='hal. "MEEVIDA Home Appliance" — i-tatag sa LAHAT ng products sa batch na ito'
+          style={{width:"100%",padding:"9px 12px",border:"1.5px solid #E5E7EB",borderRadius:8,fontSize:12,boxSizing:"border-box",marginBottom:10}}/>
+
         <button onClick={bulkAddProducts} disabled={bulkBusy||!bulkJson.trim()} style={{background:bulkBusy?"#9CA3AF":AC,color:WH,border:"none",borderRadius:8,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:bulkBusy?"default":"pointer"}}>
           {bulkBusy?"Adding...":"Add to Catalog"}
         </button>
@@ -1703,9 +1711,18 @@ function ProductCard({product:p, onShop, onCopy, copied, user}) {
           {orig && <span style={{fontSize:11,color:"#9CA3AF",textDecoration:"line-through"}}>{fp(orig)}</span>}
         </div>
 
-        {p.affiliateName && p.affiliateName !== "kashim1080" && (
-          <div style={{fontSize:10,color:P,fontWeight:600,background:PL,display:"inline-block",padding:"2px 8px",borderRadius:10,width:"fit-content"}}>
-            via {p.affiliateName}
+        {(p.storeName || (p.affiliateName && p.affiliateName !== "kashim1080")) && (
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {p.storeName && (
+              <div style={{fontSize:10,color:GY,fontWeight:600,background:LG,display:"inline-block",padding:"2px 8px",borderRadius:10}}>
+                🏬 {p.storeName}
+              </div>
+            )}
+            {p.affiliateName && p.affiliateName !== "kashim1080" && (
+              <div style={{fontSize:10,color:P,fontWeight:600,background:PL,display:"inline-block",padding:"2px 8px",borderRadius:10}}>
+                via {p.affiliateName}
+              </div>
+            )}
           </div>
         )}
 
